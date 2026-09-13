@@ -1,0 +1,32 @@
+# Python/cache artifacts (if/when Python tooling is introduced)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local capture and calibration media
+captures/
+recordings/
+calibration/raw/
+data/raw/
+data/local/
+
+# Common large media outputs
+*.avi
+*.mp4
+*.mov
+*.mkv
+*.bag
+
+# Generated diagnostics / temporary output
+out/
+build/
+dist/
+*.log
