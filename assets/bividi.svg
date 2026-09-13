@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Bividi mascot</title>
+  <desc id="desc">A cute pair of synchronized eyes representing two grounded views of one world.</desc>
+
+  <rect x="36" y="72" width="440" height="368" rx="120" fill="#F6F1E8"/>
+
+  <path d="M108 258 C154 176, 218 170, 256 230 C294 170, 358 176, 404 258" fill="none" stroke="#2E2B2A" stroke-width="18" stroke-linecap="round"/>
+
+  <ellipse cx="176" cy="258" rx="88" ry="96" fill="#FFFFFF" stroke="#2E2B2A" stroke-width="16"/>
+  <ellipse cx="336" cy="258" rx="88" ry="96" fill="#FFFFFF" stroke="#2E2B2A" stroke-width="16"/>
+
+  <circle cx="190" cy="270" r="38" fill="#2E2B2A"/>
+  <circle cx="322" cy="270" r="38" fill="#2E2B2A"/>
+
+  <circle cx="204" cy="254" r="12" fill="#FFFFFF"/>
+  <circle cx="336" cy="254" r="12" fill="#FFFFFF"/>
+
+  <path d="M219 354 Q256 378 293 354" fill="none" stroke="#2E2B2A" stroke-width="14" stroke-linecap="round"/>
+
+  <circle cx="256" cy="112" r="12" fill="#2E2B2A"/>
+  <path d="M256 124 V158" stroke="#2E2B2A" stroke-width="12" stroke-linecap="round"/>
+</svg>
