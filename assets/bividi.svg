@@ -1,29 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">Bividi mascot</title>
-  <desc id="desc">A cute pair of synchronized eyes representing two grounded views of one world.</desc>
+  <desc id="desc">A warm hand-drawn pair of little eyes representing two grounded views of one world.</desc>
 
-  <rect x="36" y="72" width="440" height="368" rx="120" fill="#F6F2FF"/>
+  <!-- warm paper-like face -->
+  <path d="M77 98 Q88 58 143 50 Q255 37 369 49 Q424 56 438 104 Q454 184 448 280 Q444 377 410 418 Q372 456 278 460 Q168 464 111 438 Q68 417 59 357 Q48 277 58 189 Q63 133 77 98Z" fill="#FFD7BE"/>
 
-  <path d="M108 258 C154 176, 218 170, 256 230 C294 170, 358 176, 404 258" fill="none" stroke="#2E2B2A" stroke-width="18" stroke-linecap="round"/>
+  <!-- left eye, intentionally slightly irregular -->
+  <path d="M103 251 Q105 183 149 156 Q190 130 226 161 Q255 187 253 249 Q251 312 214 340 Q175 369 137 338 Q104 309 103 251Z" fill="#FFF9ED" stroke="#7A3E22" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <ellipse cx="176" cy="258" rx="88" ry="96" fill="#FFFFFF" stroke="#2E2B2A" stroke-width="16"/>
-  <ellipse cx="336" cy="258" rx="88" ry="96" fill="#FFFFFF" stroke="#2E2B2A" stroke-width="16"/>
+  <!-- right eye -->
+  <path d="M273 249 Q275 184 317 157 Q356 132 394 159 Q427 184 426 248 Q425 310 390 339 Q352 369 311 339 Q274 311 273 249Z" fill="#FFF9ED" stroke="#7A3E22" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <circle cx="190" cy="270" r="45" fill="#AEE7E8"/>
-  <circle cx="322" cy="270" r="45" fill="#AEE7E8"/>
-  <circle cx="190" cy="270" r="29" fill="#2E2B2A"/>
-  <circle cx="322" cy="270" r="29" fill="#2E2B2A"/>
+  <!-- amber irises -->
+  <path d="M145 250 Q145 214 173 200 Q202 191 219 219 Q230 242 218 271 Q205 298 174 297 Q145 293 145 250Z" fill="#F8B84E"/>
+  <path d="M315 249 Q316 214 344 201 Q374 191 390 219 Q401 244 389 272 Q376 298 346 296 Q316 293 315 249Z" fill="#F8B84E"/>
 
-  <circle cx="203" cy="257" r="10" fill="#FFFFFF"/>
-  <circle cx="335" cy="257" r="10" fill="#FFFFFF"/>
+  <!-- pupils -->
+  <circle cx="181" cy="249" r="27" fill="#6B351F"/>
+  <circle cx="352" cy="249" r="27" fill="#6B351F"/>
+  <circle cx="191" cy="238" r="9" fill="#FFFDF8"/>
+  <circle cx="362" cy="238" r="9" fill="#FFFDF8"/>
 
-  <ellipse cx="110" cy="336" rx="28" ry="14" fill="#FFB8C6" opacity="0.82"/>
-  <ellipse cx="402" cy="336" rx="28" ry="14" fill="#FFB8C6" opacity="0.82"/>
+  <!-- little nose and smile -->
+  <path d="M256 249 Q250 261 256 274" fill="none" stroke="#7A3E22" stroke-width="11" stroke-linecap="round"/>
+  <path d="M232 321 Q256 341 282 319" fill="none" stroke="#7A3E22" stroke-width="11" stroke-linecap="round"/>
 
-  <path d="M220 352 Q256 382 292 352" fill="none" stroke="#2E2B2A" stroke-width="14" stroke-linecap="round"/>
+  <!-- rosy cheeks -->
+  <path d="M89 318 Q112 302 136 317 Q137 337 111 342 Q89 340 89 318Z" fill="#F58C8F" opacity="0.83"/>
+  <path d="M377 317 Q399 302 423 317 Q424 337 398 342 Q378 339 377 317Z" fill="#F58C8F" opacity="0.83"/>
+  <path d="M99 323 l15 -5 M105 333 l17 -6 M386 324 l15 -5 M392 334 l17 -6" stroke="#E96872" stroke-width="5" stroke-linecap="round" opacity="0.72"/>
 
-  <circle cx="256" cy="112" r="12" fill="#2E2B2A"/>
-  <path d="M256 124 V158" stroke="#2E2B2A" stroke-width="12" stroke-linecap="round"/>
+  <!-- tiny discovery marks -->
+  <path d="M380 112 Q389 93 396 78" stroke="#F5A623" stroke-width="10" stroke-linecap="round"/>
+  <path d="M408 126 Q423 111 434 101" stroke="#F5A623" stroke-width="10" stroke-linecap="round"/>
+  <path d="M422 153 Q441 147 452 143" stroke="#F5A623" stroke-width="10" stroke-linecap="round"/>
 
-  <path d="M420 125 l7 17 17 7-17 7-7 17-7-17-17-7 17-7z" fill="#FFD86B"/>
+  <!-- subtle second-pass strokes for a hand-drawn feel -->
+  <path d="M106 253 Q108 188 151 160" fill="none" stroke="#8B4A2B" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <path d="M276 251 Q279 189 319 161" fill="none" stroke="#8B4A2B" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
 </svg>
