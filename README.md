@@ -2,7 +2,8 @@
   <img src="assets/bividi.svg" width="190" alt="Bividi mascot — two warm hand-drawn eyes">
 </p>
 
-<h1 align="center">bividi</h1>
+<h1 align="center">Bividi</h1>
+<h3 align="center">Stereo-Inertial Observation Research</h3>
 
 <p align="center"><strong>Two little eyes, one grounded view.</strong></p>
 <p align="center"><em>Seeing is evidence. Meaning comes later.</em></p>
