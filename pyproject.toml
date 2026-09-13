@@ -10,8 +10,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+mcp = ["mcp>=2,<3"]
+
 [project.scripts]
 bividi = "bividi.cli:main"
+bividi-mcp = "bividi.mcp_server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
