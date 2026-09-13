@@ -20,7 +20,7 @@ The project starts with synchronized visual evidence, may bind inertial evidence
 observation != derived product != interpretation
 ```
 
-## What Bividi is building
+## 🌱 What Bividi is building
 
 ```text
 physical world
@@ -54,7 +54,7 @@ physical world
 
 The durable unit is not "a camera frame plus everything we know about it." Bividi keeps acquisition evidence small and explicit, then links derived results back to the observation that produced them.
 
-## Observation model
+## 👀 Observation model
 
 The current architectural direction separates three roles:
 
@@ -75,7 +75,7 @@ Stereo O123 --> disparity A --> depth A
 
 The exact stable consumer contract is still being pressure-tested in [#11](https://github.com/cctsao1008/bividi/issues/11); measured hardware behavior must drive the final schema.
 
-## Hardware direction
+## 📷 Hardware direction
 
 Bividi is deliberately **not tied to one camera module**. Hardware candidates are tracked with evidence levels so vendor claims, component facts, inference, and measured behavior remain distinct.
 
@@ -86,7 +86,7 @@ The current leading candidate is the **DECXIN AR0234 stereo + ICM-42688-P IMU** 
 
 The earlier Waveshare AR0144 USB module remains useful historical UVC/stereo research, but it is no longer the hardware mainline.
 
-## Host and interoperability
+## 🔌 Host and interoperability
 
 Bividi avoids inventing one monolithic protocol for every layer.
 
@@ -105,7 +105,7 @@ MCP is intentionally **not** the continuous stereo-video transport. High-rate me
 
 The hardware-independent host foundation and mock provider allow interface work to continue before a physical reference rig is finalized.
 
-## Research discipline
+## 🔎 Research discipline
 
 Bividi distinguishes evidence levels instead of silently promoting assumptions:
 
@@ -130,7 +130,7 @@ valid derived geometry
 semantic truth
 ```
 
-## Documentation
+## 📚 Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — system boundary and dependency direction
 - [`docs/host.md`](docs/host.md) — hardware-independent host layer
@@ -139,7 +139,7 @@ semantic truth
 - [`docs/devices/`](docs/devices/) — device facts and candidate notes
 - [`docs/characterization/`](docs/characterization/) — measurement protocols and results
 
-## Project rule
+## 📏 Project rule
 
 > **README explains the system. Issues explain the journey. Code proves the current state.**
 
