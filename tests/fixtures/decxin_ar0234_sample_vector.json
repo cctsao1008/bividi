@@ -1,0 +1,76 @@
+{
+  "source": "DECXIN TimeStamp_Data_Decode_DemoCode_V010002 / 4000x1200_0_0_10.bmp",
+  "source_sha256": "62cf01e57c0bc36e68f2f355079295947643bff02ccab5abe4d2af17ab939ebe",
+  "transport": {
+    "width": 4000,
+    "height": 1200,
+    "pixel_format": "bgr24"
+  },
+  "regions": {
+    "metadata": {
+      "x": 0,
+      "width": 160,
+      "sha256": "7619ddf0cda17900de48a1aba55f3d6bf0da70b900a2e3973c9a9b4fd961eeed"
+    },
+    "camera_a": {
+      "x": 160,
+      "width": 1920,
+      "sha256": "3b6955bcf39e92e463acb4c49df54364204d387dbd9faedac99a3cd2d4c91822"
+    },
+    "camera_b": {
+      "x": 2080,
+      "width": 1920,
+      "sha256": "a912793ac9124ee226eec9092af13a7b41302363e771815f5a93f3f68353868b"
+    }
+  },
+  "encoded_payload_sha256": "ef9ab743f58737529c9612f0cf8f0037ef2b9fa6ba616d8764e09031a681cfd4",
+  "groups_hex": [
+    "101b02000000000001ad096901ad26af",
+    "01ace563ffade01e01520054ffc20049",
+    "01acebe3ffa8e03201680054ffc00049",
+    "01acf263ffa7e04a01760052ffbf0047",
+    "01acf8e3ffa9e04d01770051ffbe0046",
+    "01acff63ffabe03f017e004effbf0045",
+    "01ad05e3ffaae04101930048ffbf0044",
+    "01ad0c63ffa6e05501a80040ffbe0043",
+    "01ad12e3ff9de06701bc0036ffbb0041",
+    "01ad1963ff91e07501d50027ffb9003e",
+    "01ad1fe3ff89e07901ea0015ffb7003b",
+    "01ad2663ff86e07101fb0002ffb60037"
+  ],
+  "expected": {
+    "protocol_type": 1,
+    "device_groups": [
+      {"device_type": 1, "group_count": 11},
+      {"device_type": 2, "group_count": 0},
+      {"device_type": 0, "group_count": 0},
+      {"device_type": 0, "group_count": 0},
+      {"device_type": 0, "group_count": 0}
+    ],
+    "exposure_start_raw_us": 28117353,
+    "exposure_end_raw_us": 28124847,
+    "exposure_duration_us": 7494,
+    "imu_count": 11,
+    "imu_raw_times_us": [
+      28108131,
+      28109795,
+      28111459,
+      28113123,
+      28114787,
+      28116451,
+      28118115,
+      28119779,
+      28121443,
+      28123107,
+      28124771
+    ],
+    "first_imu_raw": {
+      "accel": [-83, -8162, 338],
+      "gyro": [84, -62, 73]
+    },
+    "last_imu_raw": {
+      "accel": [-122, -8079, 507],
+      "gyro": [2, -74, 55]
+    }
+  }
+}
