@@ -1,6 +1,6 @@
 # Native Runtime
 
-Status: **production data-path direction — Issue #40**
+Status: **C++17/OpenCV foundation complete — live backend integration continues under Issue #35**
 
 Bividi uses a native runtime for camera acquisition and hot image-path work, while Python remains the reference/oracle layer for protocol verification, characterization, and high-level tooling.
 
@@ -124,8 +124,8 @@ Ubuntu + libopencv-dev
          → core + OpenCV bridge build + zero-copy bridge tests
 ```
 
-The first CI run for Issue #40 completed successfully across all three jobs, including actual OpenCV compile/link/test validation. This gives the OpenCV bridge a real portability checkpoint rather than treating it as an unverified optional header path.
+The first Issue #40 CI run completed successfully across all three jobs, including actual OpenCV compile/link/test validation.
 
-Live camera acquisition remains intentionally outside this checkpoint; it belongs to the hardware/backend phase after the reference device is available.
+Live camera acquisition remains outside this checkpoint and continues under #35. The next native work should connect a platform capture backend to the same decoder and `ImageView` boundary rather than creating a second device-specific data path.
 
 Related: #35, #38, #40.
