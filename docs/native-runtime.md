@@ -16,6 +16,8 @@ Device Adapter / Decoder
 Bividi Core
       ↓
 optional OpenCV views / processing
+      ↓
+optional engineering viewer
 ```
 
 The current active physical reference is stereo AR0234 + IMU, but the native core remains platform/device independent.
@@ -56,6 +58,7 @@ CMake controls which native capabilities are compiled and available, for example
 
 ```text
 BIVIDI_WITH_OPENCV
+BIVIDI_BUILD_VIEWER
 future vendor-SDK/backend options
 BIVIDI_BUILD_TESTS
 ```
@@ -80,6 +83,7 @@ Those remain runtime-discovered device capabilities.
 4. Keep vendor packet decoding deterministic and small.
 5. Profile live hardware before adding GPU/CUDA or more languages.
 6. Keep platform/vendor APIs outside the Bividi core contract.
+7. Keep UI code outside the core and backend implementations.
 
 ## Current native targets
 
@@ -89,29 +93,37 @@ Those remain runtime-discovered device capabilities.
 `bividi_opencv`
 : optional OpenCV bridge built only when OpenCV is available.
 
+`bividi-viewer`
+: optional OpenCV HighGUI engineering UI. The initial source is synthetic; future live controls bind through the backend/control boundary rather than calling vendor APIs directly.
+
 `bividi_native_tests`
 : hardware-independent golden-vector and rollover tests.
 
 `bividi_opencv_tests`
 : validates that a stride-aware `ImageView` becomes a borrowed `cv::Mat` header without copying and that unsupported pixel formats are rejected explicitly.
 
+`bividi_viewer_self_test`
+: headless CTest entry that renders and PNG-encodes one synthetic viewer frame without opening a GUI window.
+
 ## Build
 
-Without requiring OpenCV:
+Without requiring OpenCV or the viewer:
 
 ```bash
-cmake -S . -B build -DBIVIDI_WITH_OPENCV=OFF
+cmake -S . -B build -DBIVIDI_WITH_OPENCV=OFF -DBIVIDI_BUILD_VIEWER=OFF
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-With OpenCV installed, the default configuration attempts to build the OpenCV bridge:
+With OpenCV installed, the default configuration attempts to build the OpenCV bridge and engineering viewer:
 
 ```bash
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+See [`viewer.md`](viewer.md) for viewer controls and the synthetic/live boundary.
 
 ## Continuous validation
 
@@ -121,11 +133,11 @@ ctest --test-dir build --output-on-failure
 Ubuntu   → C++17 core build + tests
 Windows  → C++17 core build + tests
 Ubuntu + libopencv-dev
-         → core + OpenCV bridge build + zero-copy bridge tests
+         → core + OpenCV bridge + viewer build/tests
 ```
 
-The first Issue #40 CI run completed successfully across all three jobs, including actual OpenCV compile/link/test validation.
+The OpenCV job runs the viewer through `--self-test`, so CI does not require a display server.
 
 Live camera acquisition remains outside this checkpoint and continues under #35. The next native work should connect a platform capture backend to the same decoder and `ImageView` boundary rather than creating a second device-specific data path.
 
-Related: #35, #38, #40.
+Related: #35, #38, #40, #41.
