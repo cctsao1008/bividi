@@ -6,6 +6,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 
 - [`architecture.md`](architecture.md) — durable system boundary and dependency direction
 - [`host.md`](host.md) — hardware-independent host API and backend/adapter boundary
+- [`native-runtime.md`](native-runtime.md) — C++/OpenCV production runtime and Python reference/oracle role
 - [`recording.md`](recording.md) — recording/replay contract and MCAP role
 
 ## Active reference device
