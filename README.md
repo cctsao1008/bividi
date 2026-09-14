@@ -1,146 +1,198 @@
 <p align="center">
-  <img src="assets/bividi.svg" width="190" alt="Bividi mascot — two warm hand-drawn eyes">
+  <img src="assets/bividi.svg" width="240" alt="Bividi mascot">
 </p>
 
 <h1 align="center">Bividi</h1>
-<h3 align="center">Stereo-Inertial Observation Research</h3>
-
-<p align="center"><strong>Two little eyes, one grounded view.</strong></p>
-<p align="center"><em>Seeing is evidence. Meaning comes later.</em></p>
 
 <p align="center">
-  👀 See &nbsp;·&nbsp; 🧭 Sense motion &nbsp;·&nbsp; 📐 Measure geometry &nbsp;·&nbsp; 🧾 Preserve evidence
+  <strong>Stereo-Inertial Sensor Research</strong>
 </p>
 
-Bividi is a stereo and stereo-inertial sensing research project for turning physical sensor events into **measurable, replayable, traceable observations**.
+<p align="center">
+  <strong>Two eyes. One clock. Clean observations.</strong>
+</p>
 
-The project starts with synchronized visual evidence, may bind inertial evidence when a rig provides it, and then derives geometry or other products without confusing those products with the original observation.
+<p align="center">
+  <em>Capture precisely. Synchronize correctly. Normalize simply.</em>
+</p>
 
-```text
-observation != derived product != interpretation
-```
+<p align="center">
+  👀 Stereo &nbsp;·&nbsp; 🧭 IMU &nbsp;·&nbsp; ⏱️ Timing &nbsp;·&nbsp; 🔬 Validate
+</p>
 
-## 🌱 What Bividi is building
+Bividi is a host-side stereo-inertial sensing project for acquiring camera and IMU data accurately, normalizing device-specific transport details, and delivering a compact observation stream to LSMM, robotics, CV/ML, recording, and other consumers.
 
-```text
-physical world
-      |
-      v
-   SensorRig
-      |
-      +--> stereo source ------> StereoObservation
-      |
-      +--> IMU ----------------> ImuObservation
-                                  |
-                    time / calibration binding
-                                  |
-                                  v
-                       visual-inertial context
-                                  |
-          +-----------------------+-----------------------+
-          |                       |                       |
-          v                       v                       v
-     rectification          disparity / depth        VIO / SLAM
-          |                       |                       |
-          +-----------------------+-----------------------+
-                                  |
-                                  v
-                         ObservationProduct(s)
-                                  |
-                   +--------------+--------------+
-                   |              |              |
-                  MCAP          ROS 2        AI / tooling
-```
+The current engineering focus is intentionally narrow: **make the sensor path precise, efficient, stable, and easy to trust**.
 
-The durable unit is not "a camera frame plus everything we know about it." Bividi keeps acquisition evidence small and explicit, then links derived results back to the observation that produced them.
+> **Cute sensor. Serious timing.** Vendor quirks stay below the adapter boundary; consumers should see clean stereo images, IMU samples, timing, calibration identity, and capture status.
 
-## 👀 Observation model
+---
 
-The current architectural direction separates three roles:
-
-- **`StereoObservation`** — immutable stereo acquisition evidence: source, sequence/time, left/right frame references, acquisition state, synchronization evidence, and provenance.
-- **`ImuObservation`** — inertial samples with their own source, timestamps/clock domain, status, and provenance.
-- **`ObservationProduct`** — derived results such as rectification, disparity, depth, point clouds, embeddings, or later perception outputs, each referencing its parent observation(s).
-
-This naturally forms an **observation graph** rather than one ever-growing struct:
+## 🧭 Architecture
 
 ```text
-Stereo O123 ---------+
-                     +--> VI context --> pose / VIO product
-IMU I700..I716 ------+
-
-Stereo O123 --> disparity A --> depth A
-           +--> disparity B --> depth B
+Physical SensorRig
+      ↓
+Capture Backend
+      ↓
+Device Adapter
+      ↓
+Observation Stream
+      ↓
+┌──────────┬──────────┬──────────┬──────────┐
+│   LSMM   │ Robotics │  CV / ML │ Recorder │
+└──────────┴──────────┴──────────┴──────────┘
 ```
 
-The exact stable consumer contract is still being pressure-tested in [#11](https://github.com/cctsao1008/bividi/issues/11); measured hardware behavior must drive the final schema.
+The boundary is deliberately small:
 
-## 📷 Hardware direction
+- **SensorRig** — the physical cameras, IMU, trigger/sync wiring, and calibration relationship.
+- **Capture Backend** — UVC, OS camera APIs, vendor SDKs, file/replay sources, or future transports.
+- **Device Adapter** — owns packing, metadata decoding, timestamp quirks, left/right extraction, and device controls.
+- **Observation Stream** — exposes normalized sensor information without leaking vendor transport layout.
 
-Bividi is deliberately **not tied to one camera module**. Hardware candidates are tracked with evidence levels so vendor claims, component facts, inference, and measured behavior remain distinct.
+Bividi does not try to become a semantic reasoning framework. It stops at clean sensor observations; interpretation belongs downstream.
 
-The current leading candidate is the **DECXIN AR0234 stereo + ICM-42688-P IMU** module: dual global-shutter sensors, USB 3, FPGA-based acquisition, external trigger/strobe/frame-sync pins, and vendor timing claims that are attractive for stereo-inertial work. Those timing numbers remain claims until independently measured.
+## 📷 Reference sensor
 
-- Detailed DECXIN evaluation: [#32](https://github.com/cctsao1008/bividi/issues/32)
-- Camera/module evidence register: [#33](https://github.com/cctsao1008/bividi/issues/33)
+The current reference hardware direction is the **DECXIN AR0234 stereo + ICM-42688-P IMU** module. The purchased unit is the **100° SKU**.
 
-The earlier Waveshare AR0144 USB module remains useful historical UVC/stereo research, but it is no longer the hardware mainline.
-
-## 🔌 Host and interoperability
-
-Bividi avoids inventing one monolithic protocol for every layer.
+Current vendor-supplied facts and host-side material indicate:
 
 ```text
-Device          UVC / OS camera APIs / device SDKs
-Core            Bividi host + observation model
-Recording       MCAP
-Robotics        ROS 2 message adapters
-Realtime bus    DDS through ROS 2 where appropriate
-Media pipeline  GStreamer when useful
-AI / agents     MCP for control, discovery, metadata, and selected resources
-CV / ML         in-process image / tensor adapters
+2 × AR0234 global-shutter cameras
+1920 × 1200 per eye
+USB 3 transport
+4000 × 1200 composite transport mode
+MJPEG up to 60 fps / YUYV up to 30 fps
+ICM-42688-P IMU at about 600 Hz
+external trigger / strobe / frame-sync signals
+vendor timestamp + IMU metadata encoding
 ```
 
-MCP is intentionally **not** the continuous stereo-video transport. High-rate media belongs on a data plane suited to it.
+The exact H/V/D field of view for the purchased 100° lens, specimen calibration, and real synchronization performance remain hardware-verification items.
 
-The hardware-independent host foundation and mock provider allow interface work to continue before a physical reference rig is finalized.
+Durable device notes:
 
-## 🔎 Research discipline
+- [`docs/devices/decxin-ar0234.md`](docs/devices/decxin-ar0234.md)
+- [`docs/protocols/decxin-nori-timestamp-imu.md`](docs/protocols/decxin-nori-timestamp-imu.md)
+- [`docs/devices/decxin-nori-sdk-surface.md`](docs/devices/decxin-nori-sdk-surface.md)
 
-Bividi distinguishes evidence levels instead of silently promoting assumptions:
+Hardware evaluation is tracked in [#32](https://github.com/cctsao1008/bividi/issues/32).
+
+## ⏱️ Transport and timing
+
+The DECXIN/Nori material gives Bividi a useful first real adapter target:
 
 ```text
-MEASURED
-> descriptor / protocol evidence
-> manufacturer documentation
-> external implementations
-> secondary promotional material
-> inference
+4000 × 1200 transport frame
+
+┌──────────────┬────────────────────┬────────────────────┐
+│ metadata     │ left camera        │ right camera       │
+│ 160 px       │ 1920 × 1200        │ 1920 × 1200        │
+└──────────────┴────────────────────┴────────────────────┘
 ```
 
-A sensor's capability does not automatically imply that a finished camera module exposes that capability to the host.
+The vendor decoder material describes exposure start/end timestamps plus bundled IMU samples. The device timestamps are 32-bit microsecond counters, so rollover handling is part of the adapter rather than something consumers should need to know about.
 
-Likewise:
+The rule is simple:
 
 ```text
-valid observation
-!=
-valid derived geometry
-!=
-semantic truth
+transport payload != host observation
 ```
+
+The adapter absorbs the transport oddities. The host-facing stream stays clean.
+
+## 🧰 Host engineering
+
+The current host foundation is hardware-independent and dependency-light. Discovery/status/mode inspection already exists; the real sensor path is now being implemented under [#35](https://github.com/cctsao1008/bividi/issues/35).
+
+Current CLI:
+
+```bash
+bividi about
+bividi sources
+bividi status <source-id>
+bividi modes <source-id>
+bividi --json sources
+```
+
+The next sensor-side work is deliberately staged:
+
+```text
+vendor sample + decoder material
+        ↓
+offline DECXIN decoder
+        ↓
+golden tests
+        ↓
+inspection CLI
+        ↓
+live Nori/UVC backend
+        ↓
+long-run capture / timing / recovery validation
+```
+
+Offline and live paths should share the same decoding and normalization logic.
+
+## 🔬 Engineering priorities
+
+Bividi optimizes for four things before adding more features:
+
+- **Precise** — preserve device timing, exposure timing, IMU cadence, sequence continuity, and calibration identity.
+- **Efficient** — avoid unnecessary frame copies, conversions, and unbounded buffering.
+- **Stable** — expose malformed frames, drops, duplicates, disconnects, and recovery state explicitly.
+- **Simple** — keep the host-facing model small and keep device-specific behavior in the adapter.
+
+A pretty depth map is not useful if the underlying capture timing is ambiguous or the stream quietly drops data.
+
+## 🧪 Validation
+
+The first useful tests are sensor tests, not perception demos.
+
+```text
+frame continuity
+IMU continuity
+exposure timestamp continuity
+32-bit timestamp rollover
+left/right extraction
+malformed-payload rejection
+sustained FPS / jitter
+bounded memory use
+disconnect / reconnect behavior
+trigger / sync measurement
+```
+
+Vendor specifications remain vendor specifications until the physical unit is measured. Characterization results belong under [`docs/characterization/`](docs/characterization/).
+
+## 🧱 Repository shape
+
+```text
+src/                    host core and adapters
+tools/                  inspection / capture / validation tools
+tests/                  deterministic and hardware integration tests
+docs/devices/           durable device facts
+docs/protocols/         device protocol notes
+docs/characterization/  measurement plans and results
+config/devices/          measured device profiles / quirks
+calibration/             calibration metadata and references
+data/                    artifact conventions; not a media dump
+```
+
+Large vendor SDK archives and raw captures do not belong in normal Git history. Source material stays outside the repository; durable engineering conclusions, code, tests, and measurements belong here.
 
 ## 📚 Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — system boundary and dependency direction
 - [`docs/host.md`](docs/host.md) — hardware-independent host layer
-- [`docs/research/host-ai-interface-standards.md`](docs/research/host-ai-interface-standards.md) — interoperability choices
-- [`docs/visual-identity.md`](docs/visual-identity.md) — mascot and README tone contract
-- [`docs/devices/`](docs/devices/) — device facts and candidate notes
+- [`docs/README.md`](docs/README.md) — documentation map
+- [`docs/visual-identity.md`](docs/visual-identity.md) — mascot and README tone
+- [`docs/devices/`](docs/devices/) — device facts and SDK surface
+- [`docs/protocols/`](docs/protocols/) — transport/timestamp/IMU protocol notes
 - [`docs/characterization/`](docs/characterization/) — measurement protocols and results
 
-## 📏 Project rule
+## 📏 Documentation principle
 
 > **README explains the system. Issues explain the journey. Code proves the current state.**
 
-Bividi is intentionally friendly at the door and strict about evidence once you step inside.
+README and durable documentation explain the sensor architecture, device boundaries, timing semantics, host interfaces, and verified hardware facts. GitHub Issues preserve experiments, implementation progress, unknowns, and measurement history. Code, configuration, tests, and characterization results remain the authoritative proof of implemented behavior.
