@@ -7,6 +7,7 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
+from .decxin import DecxinDecodeError, DecxinDecoder
 from .host import BividiHost
 from .mock import MockStereoProvider
 
@@ -45,7 +46,7 @@ def _parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("about", help="show host implementation information")
-    sub.add_parser("sources", help="list available stereo sources")
+    sub.add_parser("sources", help="list available sensor sources")
 
     status = sub.add_parser("status", help="show source status")
     status.add_argument("source_id")
@@ -53,30 +54,36 @@ def _parser() -> argparse.ArgumentParser:
     modes = sub.add_parser("modes", help="list source capture modes")
     modes.add_argument("source_id")
 
+    inspect = sub.add_parser("inspect", help="inspect an offline sensor capture")
+    inspect.add_argument("capture", help="path to a supported capture file")
+
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    host = build_host()
 
     try:
-        if args.command == "about":
-            payload = {
-                "project": "bividi",
-                "host_api": "reference-python",
-                "hardware_provider": False,
-                "note": "current executable path is synthetic only",
-            }
-        elif args.command == "sources":
-            payload = [source.to_dict() for source in host.list_sources()]
-        elif args.command == "status":
-            payload = host.get_source_status(args.source_id).to_dict()
-        elif args.command == "modes":
-            payload = [mode.to_dict() for mode in host.list_modes(args.source_id)]
-        else:  # pragma: no cover - argparse keeps this unreachable
-            raise AssertionError(args.command)
-    except KeyError as exc:
+        if args.command == "inspect":
+            payload = DecxinDecoder().decode_bmp(args.capture).summary()
+        else:
+            host = build_host()
+            if args.command == "about":
+                payload = {
+                    "project": "bividi",
+                    "host_api": "reference-python",
+                    "hardware_provider": False,
+                    "note": "current live path is synthetic; offline DECXIN inspection is available",
+                }
+            elif args.command == "sources":
+                payload = [source.to_dict() for source in host.list_sources()]
+            elif args.command == "status":
+                payload = host.get_source_status(args.source_id).to_dict()
+            elif args.command == "modes":
+                payload = [mode.to_dict() for mode in host.list_modes(args.source_id)]
+            else:  # pragma: no cover - argparse keeps this unreachable
+                raise AssertionError(args.command)
+    except (KeyError, OSError, DecxinDecodeError) as exc:
         parser = _parser()
         parser.error(str(exc))
         return 2
