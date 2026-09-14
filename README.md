@@ -39,9 +39,7 @@ Device Adapter
       ↓
 Observation Stream
       ↓
-┌──────────┬──────────┬──────────┬──────────┐
-│   LSMM   │ Robotics │  CV / ML │ Recorder │
-└──────────┴──────────┴──────────┴──────────┘
+LSMM · Robotics · CV / ML · Recorder
 ```
 
 The architectural roles are intentionally small:
