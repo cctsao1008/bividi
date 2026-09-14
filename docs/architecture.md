@@ -1,219 +1,194 @@
 # Bividi Architecture
 
-Status: **foundation contract — Issue #2**
+Status: **platform-independent sensor core — Issues #35 and #38**
 
-Bividi turns synchronized stereo views of the physical world into calibrated, measurable observations. It deliberately stops before assigning higher-level semantic meaning.
+Bividi turns host-visible sensor data into normalized observation streams while keeping operating-system mechanics, device-family quirks, and downstream interpretation outside the core.
 
-## 1. Core rule
+## 1. Core rules
 
 ```text
+platform != device
+device transport != sensor topology
+sensor topology != build configuration
+transport payload != host observation
 observation != meaning
 ```
 
-Bividi may produce images, geometry, disparity, depth, validity, and quality metadata. Those outputs are evidence about a scene; they are not semantic truth, object identity, or decision authority.
+The architecture is intentionally small. Bividi is a sensor subsystem, not a general perception ontology.
 
 ## 2. System boundary
 
 ```text
-physical world
-      |
-      v
-stereo source
-      |
-      v
-transport / acquisition
-      |
-      v
-stereo-pair extraction
-      |
-      v
-calibration context
-      |
-      v
-rectification
-      |
-      v
-disparity / depth
-      |
-      v
-quality / validity
-      |
-      v
-stable stereo observation
-      |
-      +--> visualization / debug
-      +--> robotics / SLAM
-      +--> CV / ML
-      +--> future grounding experiments
+Physical SensorRig
+        ↓
+Platform Backend
+        ↓
+Device Adapter
+        ↓
+Capability Discovery
+        ↓
+Bividi Core
+  platform-independent
+        ↓
+Observation Streams
+        ↓
+LSMM · Robotics · CV / ML · Recorder
 ```
 
-The dependency direction is downward only. A consumer must not be required to know the sensor model, transport packing, or capture backend in order to consume a stereo observation.
+Dependency direction is toward the core boundary. A downstream consumer must not need to know which operating system, SDK, packet layout, camera model, or lens SKU produced an observation.
 
-## 3. Architectural roles
+## 3. Platform Backend
 
-### Stereo source
+The platform backend owns host-API mechanics only.
 
-The physical or replayed origin of a stereo stream. The first reference source is the Waveshare AR0144 Stereo USB Camera (A), but AR0144 is not part of Bividi's architectural identity.
-
-A future source may use another sensor, another transport, or recorded data.
-
-### Transport / acquisition
-
-Responsible for acquiring host-visible frames and acquisition metadata from a source.
-
-Examples may include UVC/V4L2, DirectShow, FFmpeg, or another backend. These are implementation mechanisms, not public architecture.
-
-### Stereo-pair extraction
-
-Converts transport-specific payloads into an explicit left/right pair.
+Examples include:
 
 ```text
-transport payload != stereo pair
+Windows   Media Foundation / UVC / optional vendor SDK
+Linux     V4L2 / UVC / optional vendor SDK
+macOS     AVFoundation / UVC
+Replay    deterministic file-backed input
 ```
 
-Side-by-side packing, multiple video nodes, interleaving, padding, and left/right ordering belong below this boundary.
+A backend may discover devices and eventually own platform-specific capture handles, buffers, callbacks, and error translation.
 
-### Calibration context
+It must not define device-family semantics.
 
-Binds a stereo pair to the calibration needed to interpret its geometry. Calibration identity must remain distinguishable from nominal vendor specifications.
+## 4. Device Adapter
 
-### Rectification
+A device adapter owns protocol/profile-specific behavior.
 
-Produces a geometrically aligned pair from a calibrated pair. A rectified pair is a derived observation and must remain distinguishable from the originally captured pair.
+Typical responsibilities include:
 
-### Disparity / depth
+- identifying whether the adapter supports a discovered device;
+- decoding device-specific transport packing;
+- extracting logical camera channels;
+- decoding metadata and device timestamps;
+- extending finite-width device clocks when required;
+- interpreting trigger/control behavior;
+- converting device-specific information into normalized capabilities and observations.
 
-Produces optional geometric derivatives. Invalid, occluded, missing, or low-confidence regions remain explicit; they are not converted into invented depth.
+The adapter must not own operating-system policy.
 
-### Quality / validity
+## 5. Runtime capability discovery
 
-Carries measurable status such as acquisition validity, synchronization quality, rectification error, disparity validity, latency, and drop/jitter information where available.
+Sensor topology is a runtime fact.
 
-### Stereo observation
-
-The durable consumer boundary. Its exact schema is intentionally deferred until characterization work establishes what must be preserved. Issue #11 owns that freeze.
-
-## 4. Required separations
+The compact core capability model can describe:
 
 ```text
-vendor claim != descriptor evidence != measured behavior
-
-transport acquisition
-!= stereo-pair extraction
-!= calibration / rectification
-!= disparity / depth
-!= observation packaging
-
-raw captured evidence != derived geometry
-
-missing != failed != invalid != negative observation
-
-confidence / quality != semantic authority
+camera streams[]
+stereo_pairs[]
+camera encoding
+camera modality
+IMU present / absent
+audio present / absent
+device timestamp support
+exposure timestamp support
+hardware synchronization support
+trigger modes[]
 ```
 
-These separations are design constraints, not naming preferences.
+Camera encoding and physical modality are separate concepts. For example, an infrared camera may expose a monochrome image representation.
 
-## 5. Evidence hierarchy
+Stereo relationships are explicit. The presence of two camera streams alone does not authorize Bividi to infer that they form a calibrated or synchronized stereo pair.
 
-When documentation and hardware disagree, preserve the disagreement.
+## 6. Bividi Core
 
-For host-visible behavior, prefer:
+The core is platform-independent.
+
+It must not depend on:
 
 ```text
-measured captured behavior
-    > device/UVC descriptor evidence
-    > current product specification
-    > generic/manual/marketing text
+Windows / Linux / macOS APIs
+Nori or another vendor SDK type
+V4L2 / AVFoundation / Media Foundation objects
+a particular USB packet layout
+a fixed number of cameras
+a fixed RGB / IR assumption
+mandatory IMU or audio
+a particular camera model or lens SKU
 ```
 
-This hierarchy does not make one source infallible; it defines which evidence controls an implementation claim.
+The core may depend only on normalized Bividi domain types and interfaces.
 
-## 6. Device-specific versus core behavior
+## 7. Build-time versus runtime
 
-Device-specific details belong behind a device/profile boundary, including:
+The rule is:
 
-- VID/PID and product strings;
-- UVC mode quirks;
-- frame packing;
-- left/right ordering;
-- mode-specific crop/scale behavior;
-- control quirks;
-- known synchronization constraints.
+> **Build/install enables available backends; runtime discovers the attached sensor topology.**
 
-Core processing must not require `AR0144`, `Waveshare`, `USB`, `UVC`, `OpenCV`, or any one matcher algorithm to appear in its public observation model.
+Build/install configuration may enable optional dependencies such as a vendor SDK or native backend.
 
-## 7. Status model
-
-The final runtime representation is not frozen yet, but Bividi must preserve distinctions equivalent to:
-
-- valid acquisition;
-- missing acquisition;
-- acquisition failure;
-- malformed or unsupported payload;
-- invalid stereo pairing / desynchronization;
-- valid pair with invalid derived geometry.
-
-A downstream stage may add failure/quality information, but must not silently rewrite an upstream failure into a valid observation.
-
-## 8. Repository layout
-
-The initial repository layout is intentionally language-neutral:
+It must not be used to choose:
 
 ```text
-README.md
-assets/
-
-docs/
-  architecture.md
-  devices/
-  characterization/
-
-src/
-tools/
-tests/
-config/
-  devices/
-calibration/
-data/
+mono vs stereo
+RGB vs IR
+IMU present vs absent
+audio present vs absent
+specific camera model
+specific lens/SKU
 ```
 
-Roles:
+Those are runtime device/capability facts.
 
-- `docs/` — durable architecture, device facts, protocols, and measured characterization summaries;
-- `src/` — executable library/runtime code once the implementation language is chosen;
-- `tools/` — probes, capture/calibration utilities, and inspection tools;
-- `tests/` — hardware-independent tests plus explicit hardware integration tests later;
-- `config/devices/` — device/mode profiles and quirks after they are measured;
-- `calibration/` — small calibration metadata/artifact manifests, not large image collections;
-- `data/` — artifact conventions/manifests; large raw media are excluded from ordinary Git history.
+## 8. Host/provider compatibility boundary
 
-## 9. Artifact policy
+The current Python host facade predates this capability split and still exposes a stereo-oriented provider/mode API.
 
-Normal Git history should contain small, reviewable artifacts:
+That compatibility surface remains usable while Issue #11 owns the final consumer observation-boundary freeze.
 
-- Markdown documentation;
-- text/JSON/YAML descriptors and manifests;
-- compact calibration parameter files;
-- tiny synthetic fixtures when justified;
-- hashes and metadata for externally stored captures.
+New code must not infer runtime topology from provider names or build flags. Providers expose normalized `SensorCapabilities` explicitly.
 
-Large raw image/video/calibration datasets should stay outside ordinary Git history unless the project explicitly adopts an artifact/LFS strategy.
+## 9. Timing and synchronization
 
-## 10. Non-goals
+Device timing and host timing are different domains.
+
+Where available, Bividi preserves distinctions equivalent to:
+
+```text
+device timestamp
+exposure start
+exposure end
+host receive / callback time
+sequence continuity
+synchronization status
+```
+
+Host arrival time must not silently replace a device/exposure timestamp when the latter exists.
+
+## 10. Scope
+
+Bividi owns:
+
+- platform acquisition boundaries;
+- device normalization;
+- runtime capability discovery;
+- timing/synchronization semantics;
+- calibration identity;
+- capture status and quality;
+- normalized observation delivery.
 
 Bividi does not own:
 
-- semantic truth or semantic admission;
-- object ontology or general scene understanding;
-- decision/policy authority;
-- LSMM runtime behavior;
-- application-specific robotics policy;
-- universal benchmarking of every stereo algorithm.
+- semantic truth;
+- object ontology;
+- application decision authority;
+- SLAM/VIO policy;
+- LSMM reasoning;
+- a generic multimodal framework.
 
-A future LSMM experiment may consume Bividi observations, but LSMM does not define Bividi's core schema.
+## 11. Device-specific documentation
 
-## 11. First reference device
+Device-family and SKU facts belong under focused documentation such as:
 
-The first pair of eyes is the Waveshare AR0144 Stereo USB Camera (A). Product facts, assumptions, and unknowns are owned by Issue #3. Actual USB/UVC behavior is owned by Issue #4.
+```text
+docs/devices/
+docs/protocols/
+docs/characterization/
+```
 
-No unverified claim about frame packing, device topology, bridge IC, or stable frame rate is part of this architecture contract.
+Vendor claims, documented protocol behavior, and measured specimen behavior must remain distinguishable.
+
+The README and this architecture document should not track changing implementation progress or current-device development status.

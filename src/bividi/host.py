@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from .capabilities import SensorCapabilities
 from .model import CaptureMode, SourceDescriptor, SourceStatus
 from .provider import StereoSourceProvider
 
@@ -36,6 +37,9 @@ class BividiHost:
 
     def list_modes(self, source_id: str) -> tuple[CaptureMode, ...]:
         return tuple(self._provider_for(source_id).list_modes(source_id))
+
+    def get_capabilities(self, source_id: str) -> SensorCapabilities:
+        return self._provider_for(source_id).get_capabilities(source_id)
 
     def _provider_for(self, source_id: str) -> StereoSourceProvider:
         try:

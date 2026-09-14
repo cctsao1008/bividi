@@ -1,95 +1,99 @@
 # Bividi Host Reference Stack
 
-Status: initial executable host foundation — Issue #28
+Status: platform-independent host foundation — Issues #28 and #38
 
-The Bividi host layer is the boundary shared by command-line tools, AI adapters, robotics adapters, and future physical-camera providers.
+The Bividi host layer is the boundary shared by command-line tools, AI/robotics adapters, replay tooling, and future physical-camera backends.
 
 ## 1. Current structure
 
 ```text
 CLI / MCP / ROS / future adapters
-            |
-            v
-      BividiHost facade
-            |
-            v
- StereoSourceProvider protocol
-            |
-      +-----+------+
-      |            |
-    mock        future UVC
+            ↓
+        BividiHost
+            ↓
+   source-provider compatibility API
+            ↓
+     SensorCapabilities
 ```
 
-The current repository contains only a synthetic provider. This is deliberate: the real Waveshare provider must wait until Issues #4 and #5 establish measured USB/UVC topology and stereo packing.
-
-## 2. Why the host contract exists before the camera provider
-
-The host API can be tested without hardware and prevents future adapters from bypassing source validity and identity rules.
-
-It also allows MCP, ROS 2, recording, and other adapters to depend on a stable logical boundary instead of directly importing OpenCV/V4L2/DirectShow code.
-
-## 3. Evidence semantics
-
-Every source, mode, and status carries an evidence class:
+The data-plane architecture underneath a physical provider is:
 
 ```text
-synthetic  development/test fixture
-declared   externally declared capability, not yet measured
-measured   observed from the actual source
+Platform Backend
+        ↓
+Device Adapter
+        ↓
+Capability Discovery
+        ↓
+Bividi Core
 ```
 
-The mock provider returns only `synthetic` values. Nothing under `src/bividi/mock.py` is evidence about AR0144 hardware.
+`PlatformBackend` and `DeviceAdapter` are separate contracts. The first owns OS/API mechanics; the second owns device-family interpretation.
 
-## 4. Capture-mode geometry
+## 2. Runtime capability model
 
-`CaptureMode.eye_width` and `eye_height` describe each **logical eye image** at the provider boundary.
+`SensorCapabilities` is platform-independent and dependency-light.
 
-They do not describe the transport payload. For example, a future side-by-side UVC provider may receive one wide transport frame and split it internally; that packing must not leak into the host-domain mode contract.
+It can represent:
 
-## 5. CLI
-
-After installing the package in editable mode:
-
-```bash
-python -m pip install -e .
+```text
+camera streams[]
+explicit stereo_pairs[]
+RGB / MONO / RAW encoding
+visible / infrared / unknown modality
+optional IMU
+optional audio
+device / exposure timestamps
+hardware sync
+trigger modes
 ```
 
-Examples:
+Topology is discovered at runtime. It is not selected by Makefile/CMake product switches.
 
-```bash
-bividi about
-bividi sources
-bividi status mock:stereo0
-bividi modes mock:stereo0
-bividi --json sources
+## 3. Provider compatibility
+
+`StereoSourceProvider` remains as the existing discovery/control compatibility surface while Issue #11 owns the final observation contract.
+
+Providers now expose:
+
+```text
+get_capabilities(source_id)
 ```
 
-The current output is synthetic by design.
+so callers do not infer topology from source names or provider-specific conventions.
+
+## 4. Platform and device separation
+
+```text
+Platform Backend
+    owns:
+      OS/API discovery
+      platform handles
+      platform errors
+
+Device Adapter
+    owns:
+      device identification/profile
+      packet/metadata decoding
+      timestamp behavior
+      device controls
+      normalized capability discovery
+```
+
+This prevents a platform × device class explosion such as separate Windows/Linux/macOS implementations for every camera family.
+
+## 5. Dependency policy
+
+The base package intentionally remains standard-library-only.
+
+Optional platform/vendor dependencies belong to optional backends. A backend being installed means only that the binary/package *can* use it; the attached rig and its sensor topology remain runtime facts.
 
 ## 6. Tests
 
-The initial tests use only Python's standard library:
+Hardware-independent tests use Python's standard library:
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-No physical camera, OpenCV, ROS 2, or MCP package is required for the base host tests.
-
-## 7. Dependency policy
-
-The base package intentionally has no runtime dependencies.
-
-Future dependencies belong to optional adapters:
-
-```text
-base host        standard library
-MCP adapter      official MCP Python SDK
-vision/UVC       chosen backend after hardware characterization
-ROS 2 adapter    ROS 2 environment
-MCAP adapter     MCAP package
-```
-
-## 8. Next steps
-
-Issue #29 adds the first AI-facing adapter using MCP. Issues #4/#5 remain responsible for discovering the real Waveshare USB/UVC behavior before a physical provider is implemented.
+The capability tests cover mono, stereo+IMU, and multi-camera/auxiliary-modality rigs without importing any OS or vendor SDK.

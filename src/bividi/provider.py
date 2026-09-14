@@ -1,19 +1,21 @@
-"""Provider contract for stereo sources."""
+"""Provider contract for host-visible sensor sources."""
 
 from __future__ import annotations
 
 from typing import Protocol, Sequence, runtime_checkable
 
+from .capabilities import SensorCapabilities
 from .model import CaptureMode, SourceDescriptor, SourceStatus
 
 
 @runtime_checkable
 class StereoSourceProvider(Protocol):
-    """Minimal host-side source provider contract.
+    """Compatibility host-provider contract.
 
-    Implementations may wrap UVC, recorded data, synthetic fixtures, or future
-    transports. The contract intentionally exposes logical stereo capability,
-    not transport packing details.
+    The existing provider API remains stereo-oriented while Issue #11 owns the
+    final observation-boundary freeze. Runtime topology is now exposed through
+    ``get_capabilities`` so the core does not have to infer mono/stereo/IMU/
+    audio configuration from provider names or build flags.
     """
 
     @property
@@ -27,4 +29,7 @@ class StereoSourceProvider(Protocol):
         ...
 
     def list_modes(self, source_id: str) -> Sequence[CaptureMode]:
+        ...
+
+    def get_capabilities(self, source_id: str) -> SensorCapabilities:
         ...

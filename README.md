@@ -17,14 +17,14 @@
 </p>
 
 <p align="center">
-  👀 Stereo &nbsp;·&nbsp; 🧭 IMU &nbsp;·&nbsp; ⏱️ Timing &nbsp;·&nbsp; 🔬 Validate
+  👀 Cameras &nbsp;·&nbsp; 🧭 IMU &nbsp;·&nbsp; ⏱️ Timing &nbsp;·&nbsp; 🔬 Validate
 </p>
 
-Bividi is a host-side stereo-inertial sensor system for turning device-specific camera and IMU data into a clean, synchronized observation stream.
+Bividi is a sensor-acquisition system for turning device-specific camera and inertial data into clean, synchronized observation streams.
 
-Its purpose is deliberately narrow: acquire sensor data accurately, preserve timing and calibration context, isolate hardware-specific quirks, and expose a small stable boundary to downstream consumers.
+Its core is deliberately platform-independent: operating-system mechanics stay in platform backends, device-family quirks stay in device adapters, and the actual sensor topology is discovered at runtime.
 
-> **Cute sensor. Serious timing.** Complexity stays below the adapter boundary; the host-facing stream stays compact and predictable.
+> **Cute sensor. Serious timing.** Complexity stays below the core boundary; downstream consumers see compact, predictable observations.
 
 ---
 
@@ -32,45 +32,65 @@ Its purpose is deliberately narrow: acquire sensor data accurately, preserve tim
 
 ```text
 Physical SensorRig
-      ↓
-Capture Backend
-      ↓
+        ↓
+Platform Backend
+        ↓
 Device Adapter
-      ↓
-Observation Stream
-      ↓
+        ↓
+Capability Discovery
+        ↓
+Bividi Core
+  platform-independent
+        ↓
+Observation Streams
+        ↓
 LSMM · Robotics · CV / ML · Recorder
 ```
 
 The architectural roles are intentionally small:
 
-- **SensorRig** — the physical cameras, optional inertial sensor, synchronization path, and calibration relationship.
-- **Capture Backend** — obtains device-visible sensor data through an OS API, vendor SDK, replay source, or another transport.
-- **Device Adapter** — absorbs device-specific packing, metadata, timestamp behavior, channel ordering, and control details.
-- **Observation Stream** — presents normalized stereo, inertial, timing, calibration, and capture-status information without exposing transport quirks.
+- **Platform Backend** — owns operating-system and host-API mechanics such as Windows, Linux, macOS, UVC, V4L2, AVFoundation, or an optional vendor SDK.
+- **Device Adapter** — owns device-family protocol details, packing, metadata, timestamp behavior, channel ordering, and control quirks.
+- **Capability Discovery** — describes the sensor rig that is actually present: camera streams, declared stereo pairs, modality/encoding, optional IMU/audio, timing, synchronization, and trigger support.
+- **Bividi Core** — consumes normalized device information without depending on an OS API, vendor SDK type, camera model, lens SKU, or fixed mono/stereo topology.
+- **Observation Streams** — expose normalized sensor data and context to downstream consumers.
 
-The key boundary is:
+The key boundaries are:
 
 ```text
+platform != device
+device transport != sensor topology
+sensor topology != build configuration
 transport payload != host observation
 ```
 
-A transport format may change. A device may change. The host-facing observation boundary should not need to change with them.
+## 🧩 Runtime capability model
 
-## ⏱️ Sensor contract
+Bividi does not assume that every rig is the same.
 
-Bividi keeps the sensor contract practical rather than broad:
+A rig may expose:
 
 ```text
-stereo image data
-IMU samples when present
-device and host timing
-sequence / continuity
-calibration identity
-capture / synchronization status
+one or more camera streams
+zero or more declared stereo pairs
+RGB / MONO / RAW encoding
+visible / infrared / unknown modality
+optional IMU
+optional audio
+device / exposure timing
+hardware synchronization
+software / hardware / command trigger
 ```
 
-The project does not assign semantic meaning to these observations. LSMM, robotics, CV/ML, and other consumers may interpret them downstream.
+Camera relationships are explicit. Two streams do not become a stereo pair merely because both exist.
+
+## ⚙️ Build-time vs runtime
+
+Bividi follows one durable rule:
+
+> **Build/install enables available backends; runtime discovers the attached sensor topology.**
+
+Build-time configuration may decide whether an optional backend or vendor SDK is available. It must not decide whether the current rig is mono or stereo, RGB or IR, or whether IMU/audio is present.
 
 ## 🔬 Engineering principles
 
@@ -79,9 +99,9 @@ Bividi is built around four durable priorities:
 - **Precise** — preserve timing, sequence continuity, synchronization state, and calibration context.
 - **Efficient** — avoid unnecessary copying, conversion, and buffering in the acquisition path.
 - **Stable** — make malformed input, drops, disconnects, recovery, and long-run behavior explicit and diagnosable.
-- **Simple** — keep the core boundary small and keep device-specific behavior inside adapters.
+- **Simple** — keep the core boundary small and keep platform/device-specific behavior outside it.
 
-These priorities apply regardless of which stereo-inertial device is used underneath.
+These priorities apply regardless of which operating system or camera module is used underneath.
 
 ## 📐 Scope
 
@@ -90,9 +110,10 @@ Bividi owns the path from physical sensor acquisition to normalized observations
 ```text
 Bividi owns
 ───────────
-acquisition
-synchronization / timing semantics
+platform acquisition boundary
 device normalization
+runtime capability discovery
+synchronization / timing semantics
 calibration identity
 capture status / quality
 
@@ -108,8 +129,8 @@ This keeps Bividi useful to LSMM without coupling the sensor layer to LSMM inter
 
 ## 📚 Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — system boundary and dependency direction
-- [`docs/host.md`](docs/host.md) — hardware-independent host layer
+- [`docs/architecture.md`](docs/architecture.md) — core boundary and dependency direction
+- [`docs/host.md`](docs/host.md) — host API and backend/adapter boundary
 - [`docs/README.md`](docs/README.md) — documentation map
 - [`docs/devices/`](docs/devices/) — device-specific facts and integration notes
 - [`docs/protocols/`](docs/protocols/) — transport and protocol details

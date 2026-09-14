@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from .capabilities import CameraEncoding, CameraModality, CameraStreamCapability, SensorCapabilities
 from .model import CaptureMode, EvidenceKind, SourceDescriptor, SourceState, SourceStatus
 
 
 class MockStereoProvider:
     """A deliberately synthetic provider.
 
-    Values returned here are test fixtures only. They are not claims about the
-    Waveshare AR0144 camera or any physical device.
+    Values returned here are test fixtures only. They are not claims about any
+    physical camera or vendor device.
     """
 
     provider_id = "mock"
@@ -47,6 +48,26 @@ class MockStereoProvider:
                 pixel_format="gray8",
                 evidence=EvidenceKind.SYNTHETIC,
             ),
+        )
+
+    def get_capabilities(self, source_id: str) -> SensorCapabilities:
+        self._require_source(source_id)
+        return SensorCapabilities(
+            cameras=(
+                CameraStreamCapability(
+                    stream_id="left",
+                    role="left",
+                    encoding=CameraEncoding.MONO,
+                    modality=CameraModality.VISIBLE,
+                ),
+                CameraStreamCapability(
+                    stream_id="right",
+                    role="right",
+                    encoding=CameraEncoding.MONO,
+                    modality=CameraModality.VISIBLE,
+                ),
+            ),
+            stereo_pairs=(("left", "right"),),
         )
 
     def _require_source(self, source_id: str) -> None:

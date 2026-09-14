@@ -27,6 +27,13 @@ class HostTests(unittest.TestCase):
         self.assertEqual(modes[0].eye_height, 240)
         self.assertEqual(modes[0].evidence, EvidenceKind.SYNTHETIC)
 
+    def test_capabilities_are_runtime_topology(self) -> None:
+        capabilities = self.host.get_capabilities("mock:stereo0")
+        self.assertEqual(capabilities.camera_count, 2)
+        self.assertTrue(capabilities.has_stereo)
+        self.assertFalse(capabilities.imu)
+        self.assertFalse(capabilities.audio)
+
     def test_unknown_source_raises(self) -> None:
         with self.assertRaises(KeyError):
             self.host.get_source_status("missing:source")
