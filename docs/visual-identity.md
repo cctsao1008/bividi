@@ -2,7 +2,7 @@
 
 Bividi should feel like a **cute research instrument**: approachable at first glance, technically rigorous immediately after.
 
-Its README and mascot now share a family resemblance with `single-wheel-platform` and `rotary-inverted-pendulum`, but Bividi keeps its own sensor-first identity.
+Its README and mascot share a family resemblance with `single-wheel-platform` and `rotary-inverted-pendulum`, but Bividi keeps its own sensor-first identity.
 
 ## Hero contract
 
@@ -26,7 +26,7 @@ Current Bividi lines:
 
 ## Mascot direction
 
-The Bividi mascot is a small stereo-inertial sensing head.
+The Bividi mascot is a small stereo sensing head.
 
 Visual rules:
 
@@ -34,8 +34,9 @@ Visual rules:
 - warm cream body with dark brown outlines and a soft shadow;
 - two clearly separated camera/lens eyes;
 - no goggle bridge or touching eye outlines;
-- a small central IMU/timing cue;
-- subtle stereo/synchronization accents;
+- no IC/chip graphic between the eyes;
+- the eyes should read as friendly and smiling while still looking like camera lenses;
+- subtle stereo/synchronization accents may sit around or below the sensing head;
 - calm, friendly expression rather than exaggerated cartoon behavior;
 - recognizable at README and repository-avatar scale;
 - device-inspired, but not a literal drawing of one vendor camera.
