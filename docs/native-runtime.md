@@ -124,7 +124,7 @@ Ubuntu + libopencv-dev
          → core + OpenCV bridge build + zero-copy bridge tests
 ```
 
-The first CI run for Issue #40 completed successfully across all three jobs. This gives the OpenCV bridge a real compile/link/test check instead of treating it as an unverified optional header path.
+The first CI run for Issue #40 completed successfully across all three jobs, including actual OpenCV compile/link/test validation. This gives the OpenCV bridge a real portability checkpoint rather than treating it as an unverified optional header path.
 
 Live camera acquisition remains intentionally outside this checkpoint; it belongs to the hardware/backend phase after the reference device is available.
 
