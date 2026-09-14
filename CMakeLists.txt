@@ -32,7 +32,14 @@ endif()
 
 if(BIVIDI_BUILD_TESTS)
     enable_testing()
+
     add_executable(bividi_native_tests tests/native/test_decxin.cpp)
     target_link_libraries(bividi_native_tests PRIVATE bividi_core)
     add_test(NAME bividi_native_tests COMMAND bividi_native_tests)
+
+    if(TARGET bividi_opencv)
+        add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
+        target_link_libraries(bividi_opencv_tests PRIVATE bividi_opencv)
+        add_test(NAME bividi_opencv_tests COMMAND bividi_opencv_tests)
+    endif()
 endif()
