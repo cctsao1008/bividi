@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bividi Engineering Console</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <p class="eyebrow">Bividi</p>
+        <h1>Engineering Console</h1>
+        <p class="subtitle">Stereo preview, timing, IMU state, and device controls.</p>
+      </div>
+      <div class="status-pill"><span id="state-dot"></span><span id="state">connecting</span></div>
+    </header>
+
+    <section class="notice">Synthetic source only. Preview quality and timing shown here are not AR0234 measurements.</section>
+
+    <section class="stereo-grid">
+      <figure><figcaption>Camera A</figcaption><img src="/stream/a.mjpg" alt="Camera A synthetic preview"></figure>
+      <figure><figcaption>Camera B</figcaption><img src="/stream/b.mjpg" alt="Camera B synthetic preview"></figure>
+    </section>
+
+    <section class="metrics">
+      <article><span>Frames</span><strong id="frames">—</strong></article>
+      <article><span>Drops</span><strong id="drops">—</strong></article>
+      <article><span>Preview</span><strong id="preview">—</strong></article>
+      <article><span>IMU</span><strong id="imu">—</strong></article>
+      <article><span>Exposure start</span><strong id="es">—</strong></article>
+      <article><span>Exposure end</span><strong id="ee">—</strong></article>
+    </section>
+
+    <section class="controls">
+      <div class="control-row">
+        <label for="exposure">Exposure <output id="exposure-value">—</output></label>
+        <input id="exposure" type="range" min="1" max="20000" step="1">
+      </div>
+      <div class="control-row">
+        <label for="gain">Gain <output id="gain-value">—</output></label>
+        <input id="gain" type="range" min="0" max="240" step="1">
+      </div>
+      <div class="button-row">
+        <button id="capture">Pause / Resume</button>
+        <button id="trigger">Cycle trigger</button>
+        <button id="reconnect">Reconnect / Reset</button>
+        <a class="button" href="/snapshot/a.jpg" target="_blank">Snapshot A</a>
+        <a class="button" href="/snapshot/b.jpg" target="_blank">Snapshot B</a>
+      </div>
+      <p class="last">Last action: <span id="last-action">—</span></p>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

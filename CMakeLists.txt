@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(BIVIDI_WITH_OPENCV "Build the OpenCV zero-copy image bridge when OpenCV is available" ON)
 option(BIVIDI_BUILD_VIEWER "Build the OpenCV HighGUI engineering viewer when dependencies are available" ON)
+option(BIVIDI_BUILD_WEB "Build the lightweight browser engineering console when dependencies are available" ON)
 option(BIVIDI_BUILD_TESTS "Build hardware-independent native tests" ON)
 
 add_library(bividi_core STATIC
@@ -44,6 +45,23 @@ if(BIVIDI_BUILD_VIEWER)
     endif()
 endif()
 
+if(BIVIDI_BUILD_WEB)
+    find_package(OpenCV QUIET COMPONENTS core imgproc imgcodecs)
+    if(OpenCV_FOUND)
+        add_executable(bividi-web apps/bividi_web.cpp)
+        target_include_directories(bividi-web PRIVATE include ${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(bividi-web PRIVATE bividi_core ${OpenCV_LIBS})
+        target_compile_features(bividi-web PRIVATE cxx_std_17)
+        target_compile_definitions(bividi-web PRIVATE BIVIDI_WEB_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/web")
+        if(WIN32)
+            target_link_libraries(bividi-web PRIVATE ws2_32)
+        endif()
+        message(STATUS "Bividi browser engineering console enabled")
+    else()
+        message(STATUS "OpenCV core/imgproc/imgcodecs not found; bividi-web disabled")
+    endif()
+endif()
+
 if(BIVIDI_BUILD_TESTS)
     enable_testing()
 
@@ -59,5 +77,9 @@ if(BIVIDI_BUILD_TESTS)
 
     if(TARGET bividi-viewer)
         add_test(NAME bividi_viewer_self_test COMMAND bividi-viewer --self-test)
+    endif()
+
+    if(TARGET bividi-web)
+        add_test(NAME bividi_web_self_test COMMAND bividi-web --self-test)
     endif()
 endif()

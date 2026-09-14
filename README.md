@@ -134,6 +134,8 @@ This keeps Bividi useful to LSMM without coupling the sensor layer to LSMM inter
 - [`docs/architecture.md`](docs/architecture.md) — core boundary and dependency direction
 - [`docs/host.md`](docs/host.md) — host API and backend/adapter boundary
 - [`docs/native-runtime.md`](docs/native-runtime.md) — C++/OpenCV runtime and Python reference split
+- [`docs/viewer.md`](docs/viewer.md) — local OpenCV diagnostic viewer
+- [`docs/web-ui.md`](docs/web-ui.md) — browser engineering console and HTTP/MJPEG boundary
 - [`docs/README.md`](docs/README.md) — documentation map
 - [`docs/devices/`](docs/devices/) — device-specific facts and integration notes
 - [`docs/protocols/`](docs/protocols/) — transport and protocol details
