@@ -1,152 +1,158 @@
-# Stereo Transport Characterization Test Plan
+# AR0234 Stereo Transport Characterization Plan
 
-Owner: Issue #5  
-Status: pre-hardware protocol  
-Last reviewed: 2026-09-14
+Owner: Issue #35  
+Reference device: DECXIN AR0234 stereo + ICM-42688-P  
+Status: live-hardware plan
 
 ## Objective
 
-Determine exactly how the selected host-visible transport payload maps to physical left/right observations.
+Verify how the delivered AR0234 transport maps to the two physical cameras and confirm that the live path matches the already decoded vendor sample without promoting unverified left/right assumptions into the core contract.
 
-This issue begins from #4 output. It does **not** assume that a wide frame is side-by-side merely because external implementations do so.
+## Offline facts already established
 
-## Questions to answer
-
-- one payload or multiple payloads?
-- horizontal side-by-side, vertical stacking, interleaving, or another layout?
-- exact per-eye dimensions?
-- physical left/right ordering?
-- mode-dependent crop/scale/padding?
-- MJPG versus YUY2 differences?
-- any metadata rows/columns or duplicated borders?
-
-## Working hypothesis from external evidence
+The vendor sample used by the offline decoder has this decoded geometry:
 
 ```text
-transport payload
-2560x720 decoded frame
-        |
-        v
-horizontal midpoint split
-        |
-   +----+----+
-   |         |
-1280x720 1280x720
+4000 × 1200 transport frame
+= 160 × 1200 encoded metadata region
++ 1920 × 1200 camera A
++ 1920 × 1200 camera B
 ```
 
-This remains a hypothesis until proven on the reference camera.
+The current decoder intentionally exposes `camera_a` and `camera_b` rather than guessing physical left/right identity.
 
-## Required measurements
+The metadata region carries exposure timing and bundled ICM-42688 samples; those details remain device-adapter responsibilities.
 
-### 1. Preserve the untouched decoded payload
+## Live questions to answer
 
-For each selected mode, record:
+- does the delivered unit expose the same 4000×1200 layout in the selected mode?
+- is the 160-column metadata region stable and located as expected?
+- which decoded region is the physical left camera?
+- which decoded region is the physical right camera?
+- is ordering stable across reopen/reconnect?
+- do MJPEG and YUYV expose equivalent logical camera ordering?
+- are there mode-dependent crop, scale, padding, border, or metadata differences?
+- do live timestamps and IMU groups decode through the same implementation as the offline sample?
 
+## 1. Preserve untouched transport evidence
+
+For every mode under test, record before applying semantic mapping:
+
+- transport pixel format;
 - decoded width/height/channels;
-- pixel format at transport level;
-- one or more representative frame hashes/metadata;
-- whether payload dimensions remain stable across a capture run.
+- representative hashes/metadata;
+- metadata-region geometry;
+- camera-region geometry;
+- whether dimensions/order remain stable over a capture run.
 
-Do not split the frame before preserving evidence about the original geometry.
+Do not rewrite camera A/B as left/right until physical mapping has been measured.
 
-### 2. Test midpoint geometry
+## 2. Prove physical left/right mapping
 
-If the payload is wider than a plausible single-eye image:
-
-- inspect the vertical midpoint;
-- compare image content immediately left/right of the midpoint;
-- look for seam, padding, duplicated columns, crop, or scaling artifacts;
-- verify that both halves have internally coherent geometry.
-
-### 3. Prove physical left/right ordering
-
-Use a physical one-lens-at-a-time occlusion test:
+Use one-lens-at-a-time occlusion:
 
 ```text
 cover physical left lens
--> identify which payload region changes
+→ identify whether camera A or camera B changes
 
 cover physical right lens
--> identify which payload region changes
+→ identify whether camera A or camera B changes
 ```
 
-Repeat after reconnect/reopen to make sure ordering is stable.
+Repeat after close/open and USB reconnect.
 
-Do not infer physical left/right from variable names in third-party code.
+A mapping is accepted only if it is reproducible. Variable names in vendor/demo code are not sufficient evidence.
 
-### 4. Mode-by-mode verification
+## 3. Verify transport regions
 
-Run the layout/orientation test for every transport mode Bividi intends to support.
+For the selected mode confirm:
 
-A layout proven for MJPG `2560x720` does not automatically apply to YUY2 or another resolution.
+```text
+metadata region
+camera A region
+camera B region
+```
 
-Record per mode:
+Check boundaries for:
+
+- padding;
+- duplicated columns;
+- crop/scale behavior;
+- black borders;
+- mode-specific offset changes;
+- malformed frames.
+
+The live backend should hand the raw decoded frame to the same DECXIN adapter logic used offline rather than reimplementing the split.
+
+## 4. Mode-by-mode verification
+
+At minimum test every mode Bividi intends to support on the delivered device.
+
+Record:
 
 ```text
 transport format
 transport dimensions
-per-eye dimensions
-packing layout
-left region
-right region
-crop/scale notes
-padding/seam notes
+metadata geometry
+camera A geometry
+camera B geometry
+physical left mapping
+physical right mapping
+crop / scale / padding notes
 ```
 
-### 5. Pair integrity observations
+A mapping proven for one format must not be assumed for another format without verification.
 
-At this stage record obvious pair anomalies:
+## 5. Timing and IMU continuity
 
-- one half frozen while the other changes;
-- duplicated half-frames;
-- malformed split boundary;
+Using the existing DECXIN decoder, record:
+
+- exposure start/end continuity;
+- extended 32-bit timestamp continuity;
+- IMU sample count per frame;
+- IMU timestamp cadence;
+- gaps, duplicates, or out-of-order samples;
+- frame-to-frame anomalies.
+
+Vendor synchronization numbers remain vendor claims until separately measured with appropriate trigger/strobe instrumentation.
+
+## 6. Pair integrity
+
+Record explicit failures such as:
+
+- one camera region frozen while the other changes;
+- duplicated camera regions;
+- malformed metadata/camera boundary;
 - intermittent geometry change;
-- one-eye corruption.
+- one-camera corruption;
+- missing or invalid metadata decode.
 
-Precise temporal synchronization quality belongs to #6, but #5 must establish that the payload consistently contains a usable pair.
+These states must be observable rather than silently accepted as valid stereo data.
 
-## Suggested physical scenes
+## Core boundary
 
-Use simple scenes that make mapping obvious:
-
-1. hand/finger close to only one lens;
-2. lens cap or opaque card over one lens;
-3. high-contrast vertical edge crossing the central field;
-4. asymmetric object placed deliberately toward one camera;
-5. checkerboard only after basic ordering is proven.
-
-## Deliverable format
-
-`docs/characterization/stereo-transport.md` should eventually contain a measured table such as:
-
-| Mode | Payload | Packing | Physical L | Physical R | Evidence |
-|---|---|---|---|---|---|
-| MJPG ... | ... | ... | ... | ... | ... |
-
-Until hardware measurement exists, this table remains empty rather than being filled from third-party assumptions.
-
-## Parser rule
-
-Only after a layout is measured may a device-specific parser/profile encode it.
-
-Core code should receive an explicit pair:
+The adapter may know the DECXIN layout. Bividi Core must not.
 
 ```text
-StereoPair
-  left
-  right
-  mode
-  acquisition metadata
-  pair status
+4000×1200 DECXIN transport
+        ↓
+DECXIN adapter
+        ↓
+camera streams + IMU + timing + status
+        ↓
+Bividi Core
 ```
 
-The core must not receive a `2560x720` side-by-side convention as part of its public contract.
+The final consumer-facing observation schema remains owned by Issue #11.
 
-## Acceptance criteria for #5 execution
+## Acceptance criteria
 
-- physical left/right mapping is proven with an occlusion test;
-- extraction dimensions are exact and mode-specific;
-- padding/crop/scale behavior is documented;
-- repeated captures show stable ordering/layout;
-- unsupported/ambiguous modes remain unsupported/ambiguous;
-- the measured result is sufficient to implement #7 without transport assumptions leaking upward.
+The stereo-transport characterization slice of #35 is complete when:
+
+- live transport geometry is measured for the selected AR0234 modes;
+- physical camera A/B → left/right mapping is proven and repeatable;
+- metadata and camera boundaries are exact;
+- mode-specific differences are documented;
+- live frames use the same DECXIN decoder path as offline fixtures;
+- timing/IMU continuity and malformed-frame behavior are observable;
+- no DECXIN packing assumption leaks into the platform-independent Bividi Core.

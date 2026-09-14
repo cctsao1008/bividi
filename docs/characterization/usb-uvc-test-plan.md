@@ -1,62 +1,57 @@
-# USB / UVC Characterization Test Plan
+# AR0234 Host / USB Characterization Plan
 
-Owner: Issue #4  
-Status: pre-hardware protocol  
-Last reviewed: 2026-09-14
+Owner: Issue #35  
+Reference device: DECXIN AR0234 stereo + ICM-42688-P  
+Status: live-hardware plan
 
 ## Objective
 
-Determine the **actual host-visible contract** of the reference camera before writing a device backend.
+Determine the **actual host-visible contract** of the delivered AR0234 module on each supported host path before treating vendor declarations as implemented behavior.
 
-The test must distinguish:
+Keep these distinct:
 
 ```text
-requested mode
-!= advertised mode
-!= negotiated mode
+vendor-declared mode
+!= host-advertised mode
+!= requested mode
+!= negotiated/read-back mode
 != stable captured behavior
 ```
 
-External implementations suggest a single UVC stream and MJPG `2560x720`, but those remain hypotheses until this plan is executed on our device.
+The vendor documentation currently declares, among other modes:
+
+```text
+4000 × 1200 @ 60 fps MJPEG
+4000 × 1200 @ 30 fps YUYV
+```
+
+Those values remain declarations until the delivered unit is measured.
 
 ## Evidence to retain
 
-Keep small text artifacts in Git where practical:
+For each characterization session record small, reviewable artifacts where practical:
 
-- USB tree / descriptor dump;
-- UVC format and frame-interval listing;
-- control listing;
-- negotiated/read-back mode;
-- host OS and tool versions;
-- capture summary: requested mode, actual dimensions, actual FPS, drops/failures;
-- hashes/metadata for any larger external capture artifacts.
+- host OS/version and tool versions;
+- USB identity, speed, product/manufacturer strings, serial behavior;
+- host-visible video/audio nodes or device names;
+- advertised formats/resolutions/frame intervals;
+- controls and trigger-related surfaces exposed by the chosen backend;
+- requested and read-back mode;
+- actual decoded frame dimensions and format;
+- sustained FPS window;
+- drops, duplicates, out-of-order observations, read failures, and reconnect behavior;
+- hashes/metadata for larger external captures.
 
-A characterization session should include a timestamp/session label and host identity sufficient for reproduction.
+A session should have a stable identifier and enough context to reproduce it.
 
-## Linux protocol
+## Linux path
 
-### 1. Enumerate USB topology
+Start with native UVC/V4L2 evidence before adding higher-level wrappers:
 
 ```bash
 lsusb
 lsusb -t
 v4l2-ctl --list-devices
-```
-
-Record:
-
-- VID/PID;
-- product/manufacturer strings;
-- USB bus/port path;
-- negotiated USB speed;
-- every `/dev/video*` node associated with the device.
-
-### 2. Dump descriptors and controls
-
-After identifying VID/PID and video nodes:
-
-```bash
-lsusb -v -d <VID:PID>
 v4l2-ctl --device=/dev/videoN --all
 v4l2-ctl --device=/dev/videoN --list-formats-ext
 v4l2-ctl --device=/dev/videoN --list-ctrls-menus
@@ -68,134 +63,63 @@ If a media graph exists:
 media-ctl -p
 ```
 
-### 3. Probe candidate mode
+Record VID/PID, USB speed, all associated nodes, every relevant advertised mode, and actual read-back state after requesting the target mode.
 
-External prior evidence suggests:
+The optional Nori Linux SDK may be evaluated separately, but SDK behavior must not be used to hide what the underlying host interface actually exposes.
 
-```text
-MJPG
-2560x720
-30 FPS
-```
+## Windows path
 
-Do not assume support. First confirm that the descriptor advertises the mode.
+Record device identity/topology and enumerate camera modes using native/transparent tooling before relying on application wrappers.
 
-If advertised, request it through the native V4L2 path:
-
-```bash
-v4l2-ctl \
-  --device=/dev/videoN \
-  --set-fmt-video=width=2560,height=720,pixelformat=MJPG
-```
-
-Then read back actual state:
-
-```bash
-v4l2-ctl --device=/dev/videoN --get-fmt-video
-v4l2-ctl --device=/dev/videoN --get-parm
-```
-
-If frame interval must be set explicitly, record the exact command and read it back afterwards.
-
-### 4. Capture without hiding negotiation
-
-Use at least one native or transparent path before relying on OpenCV.
-
-Candidate tools:
-
-```text
-v4l2-ctl
-ffmpeg
-GStreamer
-```
-
-Record:
-
-- first decoded frame dimensions;
-- requested/actual pixel format;
-- timestamp behavior if exposed;
-- short-run delivered FPS;
-- read failures;
-- duplicate/drop indications where observable.
-
-### 5. OpenCV comparison
-
-Only after native enumeration/negotiation is recorded, open the same node through OpenCV and compare:
-
-```text
-requested width/height/FourCC/FPS
-vs
-OpenCV read-back
-vs
-V4L2 read-back
-vs
-actual frame shape
-```
-
-This explicitly tests the external warning that `VideoCapture.set()` may silently fall back.
-
-## Windows protocol
-
-### 1. Enumerate device identity/topology
-
-Record using a USB descriptor viewer and Windows device enumeration:
-
-- VID/PID;
-- product/manufacturer strings;
-- USB speed;
-- interface/endpoints where visible;
-- camera device name(s).
-
-Useful host evidence may include:
+Useful evidence may include:
 
 ```powershell
 Get-PnpDevice -Class Camera
 Get-PnpDevice -Class Image
 ```
 
-A USB tree/descriptor tool may provide the authoritative USB-side detail that DirectShow does not expose clearly.
-
-### 2. Enumerate DirectShow modes
-
-With FFmpeg available:
+When FFmpeg DirectShow enumeration is available:
 
 ```powershell
 ffmpeg -list_devices true -f dshow -i dummy
-```
-
-Then for the exact camera name:
-
-```powershell
 ffmpeg -f dshow -list_options true -i video="<camera name>"
 ```
 
-Record every advertised format/resolution/frame-rate combination relevant to Bividi.
+The Nori Windows SDK may provide additional device controls. Treat those as a separate backend surface, not as proof that generic UVC exposes the same controls.
 
-### 3. Candidate-mode capture
+## macOS path
 
-Request candidate modes explicitly and verify the resulting decoded frame geometry and observed frame rate.
+Vendor material declares UVC compatibility on macOS, but no Nori macOS SDK has been established in the project sources.
 
-The same evidence rule applies:
-
-```text
-request success != negotiated-mode proof
-```
-
-Where Windows APIs do not provide a clean read-back path, use independent evidence from the actual decoded frame and USB/DirectShow enumeration.
+Characterization should therefore focus on the native UVC/AVFoundation-visible device and modes. Do not assume vendor-specific trigger/control parity with Windows/Linux.
 
 ## Cross-platform comparison
 
-If both Windows and Linux are available, compare:
+Compare at least:
 
-- number of exposed video devices;
-- advertised modes;
-- default mode;
+- device enumeration identity;
+- number of video/audio interfaces;
+- supported modes;
+- default/negotiated mode;
 - control set;
-- actual selected mode;
 - delivered FPS;
-- any backend-specific fallback.
+- frame dimensions and format;
+- timestamp availability;
+- reconnect behavior.
 
 Platform disagreement is evidence to preserve, not normalize away.
+
+## Runtime stability
+
+For the mode selected for Bividi, measure:
+
+- sustained FPS;
+- frame-number continuity where available;
+- duplicate/out-of-order frames;
+- timestamp continuity;
+- memory growth over a long run;
+- disconnect/reconnect behavior;
+- explicit error state on malformed or failed capture.
 
 ## Minimum session record
 
@@ -203,41 +127,30 @@ Platform disagreement is evidence to preserve, not normalize away.
 session_id
 host_os
 host_version
+backend
 tool_versions
 usb_vid_pid
 usb_speed
 video_nodes_or_names
+audio_nodes_or_names
 requested_mode
 advertised_mode_present
 negotiated_or_readback_mode
 first_frame_shape
 measured_fps_window
+drops_or_duplicates
 read_failures
+reconnect_result
 notes
 ```
 
-## Acceptance criteria for #4 execution
+## Acceptance criteria
 
-A characterization run is complete only when:
+The live host characterization slice of #35 is complete only when:
 
-- the camera's USB identity and speed are recorded;
-- every host-visible video node/interface is mapped;
-- supported formats/resolutions/frame intervals are captured from the host interface;
-- controls are enumerated;
-- at least the selected Bividi mode has requested, read-back, and captured evidence;
-- silent fallback can be detected;
-- output is sufficient for #5 to reason about stereo packing without guessing.
-
-## Output into #5
-
-#4 should hand #5 an exact transport observation such as:
-
-```text
-node/device: ...
-format: ...
-width x height: ...
-frame interval: ...
-decoded frame shape: ...
-```
-
-It must **not** hand over an assumed left/right interpretation. That belongs to #5.
+- the delivered AR0234 device identity and USB speed are recorded;
+- host-visible interfaces are mapped;
+- target formats/resolutions/frame intervals are enumerated and tested;
+- requested vs actual mode is distinguishable;
+- sustained capture and recovery behavior are measured;
+- results are sufficient to connect the live backend to the existing platform-independent DECXIN decoder without inventing transport behavior.
