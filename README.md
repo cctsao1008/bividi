@@ -92,6 +92,8 @@ Bividi follows one durable rule:
 
 Build-time configuration may decide whether an optional backend or vendor SDK is available. It must not decide whether the current rig is mono or stereo, RGB or IR, or whether IMU/audio is present.
 
+The production camera hot path is native **C++17/CMake**, with OpenCV used as an optional image-processing/view layer rather than as the Bividi core data model. Python remains the reference/oracle and characterization layer.
+
 ## 🔬 Engineering principles
 
 Bividi is built around four durable priorities:
@@ -131,6 +133,7 @@ This keeps Bividi useful to LSMM without coupling the sensor layer to LSMM inter
 
 - [`docs/architecture.md`](docs/architecture.md) — core boundary and dependency direction
 - [`docs/host.md`](docs/host.md) — host API and backend/adapter boundary
+- [`docs/native-runtime.md`](docs/native-runtime.md) — C++/OpenCV runtime and Python reference split
 - [`docs/README.md`](docs/README.md) — documentation map
 - [`docs/devices/`](docs/devices/) — device-specific facts and integration notes
 - [`docs/protocols/`](docs/protocols/) — transport and protocol details
