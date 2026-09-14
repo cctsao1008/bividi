@@ -1,57 +1,84 @@
 # Bividi visual identity
 
-This document records the project-facing visual and tone contract for Bividi.
-
-## Core character
-
 Bividi should feel like a **cute research instrument**: approachable at first glance, technically rigorous immediately after.
 
-The visual identity should not turn the repository into a toy project. The mascot and warm tone belong mainly in the README hero and small navigation cues; architecture, protocols, measurements, and research documentation remain precise and restrained.
+Its README and mascot now share a family resemblance with `single-wheel-platform` and `rotary-inverted-pendulum`, but Bividi keeps its own sensor-first identity.
 
-## Core lines
+## Hero contract
 
-- **Two little eyes, one grounded view.**
-- **Seeing is evidence. Meaning comes later.**
+The README hero uses the same rhythm as the sibling projects:
 
-## Mascot / icon direction
+```text
+mascot
+project name
+research subtitle
+strong one-line identity
+short italic engineering principle
+compact capability line
+```
 
-The Bividi icon is built around two clearly separated forward-looking eyes.
+Current Bividi lines:
 
-Guidelines:
+- **Stereo-Inertial Sensor Research**
+- **Two eyes. One clock. Clean observations.**
+- *Capture precisely. Synchronize correctly. Normalize simply.*
+- `👀 Stereo · 🧭 IMU · ⏱️ Timing · 🔬 Validate`
 
-- keep a visible gap between the eyes;
-- avoid a goggle-like bridge or touching eye outlines;
-- favor warm, hand-drawn, soft colors;
-- keep the expression small and calm rather than exaggerated;
-- the icon should still read well at repository-avatar and README sizes;
-- do not replace the two-eye identity with a generic camera glyph.
+## Mascot direction
 
-Conceptually, Bividi is a tiny sensing head: two eyes plus an inertial sense. The icon does not need to literally show an IMU or inner ear.
+The Bividi mascot is a small stereo-inertial sensing head.
+
+Visual rules:
+
+- transparent background;
+- warm cream body with dark brown outlines and a soft shadow;
+- two clearly separated camera/lens eyes;
+- no goggle bridge or touching eye outlines;
+- a small central IMU/timing cue;
+- subtle stereo/synchronization accents;
+- calm, friendly expression rather than exaggerated cartoon behavior;
+- recognizable at README and repository-avatar scale;
+- device-inspired, but not a literal drawing of one vendor camera.
+
+The visual language intentionally matches the sibling mascots through shared cream/brown materials, soft pastel accents, rounded geometry, and restrained highlights.
 
 ## README tone
 
-The README should use the mascot and a short hero section to create warmth, then transition quickly into engineering content.
+The README should be warm at the top and engineering-focused immediately afterward.
 
-Recommended rhythm:
+Preferred rhythm:
 
 ```text
 cute hero
--> one-paragraph project identity
--> compact architecture
--> current hardware/research status
--> host interfaces and tooling
--> documentation map
+-> concise project identity
+-> simple sensor architecture
+-> current reference hardware
+-> transport / timing behavior
+-> host implementation path
+-> validation priorities
+-> repository/documentation map
 ```
 
-Use emoji sparingly. Small cues such as `👀`, `🧭`, `📐`, or `🧾` are acceptable in the opening section, but technical sections should remain visually clean.
+Section headings may use one small icon. Technical paragraphs should remain plain and precise.
 
-## Project-facing concepts
+## Engineering emphasis
 
-A compact four-part introduction is acceptable:
+Bividi is primarily a sensor-system project. The README should emphasize:
 
-- 👀 See — acquire stereo evidence.
-- 🧭 Sense motion — bind inertial evidence when available.
-- 📐 Measure geometry — derive calibrated geometric products.
-- 🧾 Preserve evidence — keep observations reproducible and traceable.
+```text
+precise acquisition
+efficient normalization
+stable long-running capture
+clear timing semantics
+compact host-facing observations
+```
 
-These phrases are explanatory only. They are not substitutes for the formal observation and provenance model.
+Do not expand the project-facing language into a generic evidence ontology, semantic reasoning framework, or broad multimodal architecture unless implementation work later requires it.
+
+Vendor-specific quirks belong below the adapter boundary. The visible Bividi contract should stay small.
+
+## Project-facing line
+
+> **Cute sensor. Serious timing.**
+
+That is the intended balance: friendly presentation, strict sensor engineering.
