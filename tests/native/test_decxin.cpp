@@ -1,6 +1,7 @@
 #include "bividi/decxin.hpp"
 #include "bividi/image_view.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -52,6 +53,49 @@ std::vector<std::uint8_t> golden_payload() {
     return payload;
 }
 
+void encode_group_into_row(
+    std::vector<std::uint8_t>& storage,
+    std::size_t row_stride,
+    std::size_t row_index,
+    const std::uint8_t* group) {
+    auto* row = storage.data() + row_index * row_stride;
+    std::fill(row, row + row_stride, 0xff);
+
+    // Match the vendor decoder geometry: find a dark marker, advance four pixels,
+    // then sample one bit every eight pixels from the green channel.
+    constexpr std::size_t marker_x = 8;
+    row[marker_x * 3 + 1] = 0;
+    constexpr std::size_t first_bit_x = marker_x + bividi::decxin::kCodeCell / 2;
+
+    for (std::size_t byte_index = 0; byte_index < bividi::decxin::kGroupSize; ++byte_index) {
+        for (std::size_t bit_index = 0; bit_index < 8; ++bit_index) {
+            const auto bit_number = byte_index * 8 + bit_index;
+            const auto x = first_bit_x + bit_number * bividi::decxin::kCodeCell;
+            const bool one = ((group[byte_index] >> bit_index) & 1u) != 0;
+            const std::uint8_t level = one ? 100u : 0u;
+            row[x * 3 + 1] = level;
+            row[(x + 1) * 3 + 1] = level;
+        }
+    }
+}
+
+std::vector<std::uint8_t> synthetic_transport_frame(const std::vector<std::uint8_t>& payload) {
+    assert(payload.size() % bividi::decxin::kGroupSize == 0);
+    constexpr std::size_t stride = bividi::decxin::kTransportWidth * 3;
+    std::vector<std::uint8_t> storage(stride * bividi::decxin::kTransportHeight, 0xff);
+
+    const auto group_count = payload.size() / bividi::decxin::kGroupSize;
+    for (std::size_t group_index = 0; group_index < group_count; ++group_index) {
+        const auto row_index = 2 + group_index * bividi::decxin::kCodeCell;
+        encode_group_into_row(
+            storage,
+            stride,
+            row_index,
+            payload.data() + group_index * bividi::decxin::kGroupSize);
+    }
+    return storage;
+}
+
 void test_golden_vector() {
     bividi::decxin::Decoder decoder;
     const auto metadata = decoder.decode_payload(golden_payload());
@@ -71,6 +115,38 @@ void test_golden_vector() {
     assert((metadata.imu_samples.front().gyro_raw == std::array<std::int16_t, 3>{{84, -62, 73}}));
     assert((metadata.imu_samples.back().accel_raw == std::array<std::int16_t, 3>{{-122, -8079, 507}}));
     assert((metadata.imu_samples.back().gyro_raw == std::array<std::int16_t, 3>{{2, -74, 55}}));
+}
+
+void test_encoded_frame_path() {
+    const auto payload = golden_payload();
+    auto storage = synthetic_transport_frame(payload);
+    constexpr std::size_t stride = bividi::decxin::kTransportWidth * 3;
+    const bividi::ImageView frame{
+        storage.data(),
+        bividi::decxin::kTransportWidth,
+        bividi::decxin::kTransportHeight,
+        stride,
+        3,
+        bividi::PixelFormat::bgr24,
+    };
+
+    bividi::decxin::Decoder decoder;
+    const auto extracted = decoder.extract_payload(frame);
+    assert(extracted == payload);
+
+    decoder.reset_timestamps();
+    const auto observation = decoder.decode_frame(frame);
+    assert(observation.timing.header.protocol_type == 1);
+    assert(observation.timing.exposure_duration_us() == 7494u);
+    assert(observation.timing.imu_samples.size() == 11u);
+
+    assert(observation.metadata_region.data == storage.data());
+    assert(observation.metadata_region.width == bividi::decxin::kMetadataWidth);
+    assert(observation.camera_a.data == storage.data() + bividi::decxin::kMetadataWidth * 3);
+    assert(observation.camera_b.data ==
+           storage.data() + (bividi::decxin::kMetadataWidth + bividi::decxin::kCameraWidth) * 3);
+    assert(observation.camera_a.row_stride == stride);
+    assert(observation.camera_b.row_stride == stride);
 }
 
 void test_rollover() {
@@ -100,6 +176,7 @@ void test_image_view_is_zero_copy() {
 
 int main() {
     test_golden_vector();
+    test_encoded_frame_path();
     test_rollover();
     test_image_view_is_zero_copy();
     std::cout << "bividi native tests: PASS\n";
