@@ -92,6 +92,9 @@ Those remain runtime-discovered device capabilities.
 `bividi_native_tests`
 : hardware-independent golden-vector and rollover tests.
 
+`bividi_opencv_tests`
+: validates that a stride-aware `ImageView` becomes a borrowed `cv::Mat` header without copying and that unsupported pixel formats are rejected explicitly.
+
 ## Build
 
 Without requiring OpenCV:
@@ -109,5 +112,20 @@ cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+## Continuous validation
+
+`.github/workflows/native.yml` validates the native path on every push to `main` and on pull requests:
+
+```text
+Ubuntu   → C++17 core build + tests
+Windows  → C++17 core build + tests
+Ubuntu + libopencv-dev
+         → core + OpenCV bridge build + zero-copy bridge tests
+```
+
+The first CI run for Issue #40 completed successfully across all three jobs. This gives the OpenCV bridge a real compile/link/test check instead of treating it as an unverified optional header path.
+
+Live camera acquisition remains intentionally outside this checkpoint; it belongs to the hardware/backend phase after the reference device is available.
 
 Related: #35, #38, #40.
