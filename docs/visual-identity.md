@@ -2,7 +2,7 @@
 
 Bividi should feel like a **cute research instrument**: approachable at first glance, technically rigorous immediately after.
 
-Its README and mascot share a family resemblance with `single-wheel-platform` and `rotary-inverted-pendulum`, but Bividi keeps its own sensor-first identity.
+Its README and mascot share a family resemblance with `single-wheel-platform` and `rotary-inverted-pendulum`, while Bividi keeps its own sensor-first identity.
 
 ## Hero contract
 
@@ -43,28 +43,39 @@ Visual rules:
 
 The visual language intentionally matches the sibling mascots through shared cream/brown materials, soft pastel accents, rounded geometry, and restrained highlights.
 
-## README tone
+## README content rule
 
-The README should be warm at the top and engineering-focused immediately afterward.
+The README is for **durable project identity, scope, architecture, and engineering principles**.
 
-Preferred rhythm:
+Do not place content there merely because it is currently true during development. In particular, keep these out of the README unless they become durable architectural facts:
+
+- the current reference device or purchased SKU;
+- temporary implementation status;
+- active issue numbers or work stages;
+- current CLI command inventory;
+- vendor-specific packet layouts or numeric device details;
+- changing benchmark or characterization results;
+- near-term task lists.
+
+Those belong in focused documentation, characterization records, code/tests, or GitHub Issues.
+
+Preferred README rhythm:
 
 ```text
 cute hero
 -> concise project identity
--> simple sensor architecture
--> current reference hardware
--> transport / timing behavior
--> host implementation path
--> validation priorities
--> repository/documentation map
+-> sensor architecture
+-> compact sensor contract
+-> durable engineering principles
+-> project scope
+-> documentation map
 ```
 
 Section headings may use one small icon. Technical paragraphs should remain plain and precise.
 
 ## Engineering emphasis
 
-Bividi is primarily a sensor-system project. The README should emphasize:
+Bividi is primarily a sensor-system project. Its durable public framing emphasizes:
 
 ```text
 precise acquisition
