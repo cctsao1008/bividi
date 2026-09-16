@@ -16,8 +16,8 @@ struct DistributionSummary {
     double p99 = 0.0;
 };
 
-// Deterministic nearest-rank interpolation over a sorted copy of the input.
-// Empty input returns a zero-initialized summary.
+// Deterministic linear-interpolated percentiles over a sorted copy of the
+// finite inputs. Empty/all-non-finite input returns a zero-initialized summary.
 [[nodiscard]] DistributionSummary summarize(const std::vector<double>& values);
 
 struct SequenceSummary {
