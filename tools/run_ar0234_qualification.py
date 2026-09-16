@@ -173,7 +173,7 @@ def build_stage_command(
                 "--reconnect-every-frames", str(every_frames),
                 "--reconnect-pause-ms", str(reconnect_pause_ms),
             ]
-        else:  # defensive: StageSpec is repository-owned data
+        else:
             raise ValueError(f"unsupported fault kind: {stage.fault_kind}")
     return command
 
@@ -208,6 +208,9 @@ def command_text(command: Sequence[str]) -> str:
 def make_manifest(
     *,
     campaign_id: str,
+    created_utc: str,
+    status: str,
+    git_rev: str | None,
     args: argparse.Namespace,
     stage_results: list[StageResult],
     campaign_dir: Path,
@@ -217,7 +220,9 @@ def make_manifest(
     return {
         "schema": CAMPAIGN_SCHEMA,
         "campaign_id": campaign_id,
-        "created_utc": utc_now(),
+        "created_utc": created_utc,
+        "updated_utc": utc_now(),
+        "status": status,
         "dry_run": dry_run,
         "host": {
             "hostname": socket.gethostname(),
@@ -227,7 +232,7 @@ def make_manifest(
             "machine": platform.machine(),
             "python": platform.python_version(),
         },
-        "repository": {"git_revision": git_revision()},
+        "repository": {"git_revision": git_rev},
         "selection": {
             "device": args.device,
             "mode": args.mode,
@@ -268,11 +273,18 @@ def make_manifest(
 
 def run_probe(executable: str, output_path: Path, dry_run: bool) -> dict[str, Any]:
     command = [executable]
-    result: dict[str, Any] = {"command": command, "output": str(output_path)}
+    result: dict[str, Any] = {
+        "command": command,
+        "output": str(output_path),
+        "started_utc": None,
+        "finished_utc": None,
+        "elapsed_s": None,
+    }
     if dry_run:
         result.update({"return_code": None, "note": "dry-run; probe not executed"})
         return result
 
+    result["started_utc"] = utc_now()
     started = time.monotonic()
     try:
         completed = subprocess.run(
@@ -287,8 +299,9 @@ def run_probe(executable: str, output_path: Path, dry_run: bool) -> dict[str, An
     except OSError as exc:
         text = f"failed to execute probe: {exc}\n"
         result["return_code"] = 127
-    output_path.write_text(text, encoding="utf-8")
     result["elapsed_s"] = time.monotonic() - started
+    result["finished_utc"] = utc_now()
+    output_path.write_text(text, encoding="utf-8")
     return result
 
 
@@ -324,6 +337,12 @@ def execute_stage(result: StageResult, dry_run: bool) -> None:
     result.elapsed_s = time.monotonic() - started
     result.finished_utc = utc_now()
     result.assessment, result.note = load_assessment(summary_path)
+
+
+def stage_failed(result: StageResult, dry_run: bool) -> bool:
+    if dry_run:
+        return False
+    return result.return_code not in (0, None) or result.assessment is None
 
 
 def self_test() -> int:
@@ -399,6 +418,12 @@ def self_test() -> int:
         assessment, note = load_assessment(path)
         assert assessment == "warn" and not note
 
+        missing = StageResult("q1", "test", "missing", ["characterizer"])
+        missing.return_code = 0
+        missing.assessment = None
+        assert stage_failed(missing, False)
+        assert not stage_failed(missing, True)
+
     assert parse_stages("q1,q3,q5") == ["q1", "q3", "q5"]
     print("AR0234 qualification runner self-test: PASS")
     return 0
@@ -448,17 +473,57 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser().error("--nominal-fps is required when q4 or q5 is selected")
 
     campaign_id = safe_token(args.campaign_id or default_campaign_id())
-    campaign_dir = args.output_dir / campaign_id
+    campaign_dir = args.output_dir.expanduser().resolve() / campaign_id
     campaign_dir.mkdir(parents=True, exist_ok=False)
     manifest_path = campaign_dir / "campaign.json"
+    campaign_created_utc = utc_now()
+    git_rev = git_revision()
 
-    probe_result: dict[str, Any]
+    probe_result: dict[str, Any] = {"status": "pending"}
+    stage_results: list[StageResult] = []
+    write_manifest(
+        manifest_path,
+        make_manifest(
+            campaign_id=campaign_id,
+            created_utc=campaign_created_utc,
+            status="planned" if args.dry_run else "running",
+            git_rev=git_rev,
+            args=args,
+            stage_results=stage_results,
+            campaign_dir=campaign_dir,
+            probe_result=probe_result,
+            dry_run=args.dry_run,
+        ),
+    )
+
     if args.skip_probe:
         probe_result = {"skipped": True, "note": "operator explicitly requested --skip-probe"}
     else:
         probe_result = run_probe(args.probe, campaign_dir / "probe.txt", args.dry_run)
 
-    stage_results: list[StageResult] = []
+    if not args.dry_run and not args.skip_probe and probe_result.get("return_code") != 0:
+        write_manifest(
+            manifest_path,
+            make_manifest(
+                campaign_id=campaign_id,
+                created_utc=campaign_created_utc,
+                status="failed_probe",
+                git_rev=git_rev,
+                args=args,
+                stage_results=stage_results,
+                campaign_dir=campaign_dir,
+                probe_result=probe_result,
+                dry_run=False,
+            ),
+        )
+        print(
+            f"qualification runner: probe failed with return_code={probe_result.get('return_code')}; "
+            "campaign aborted before Q1",
+            file=sys.stderr,
+        )
+        print(f"campaign manifest: {manifest_path}")
+        return 7
+
     for stage_name in args.stages:
         stage = STAGES[stage_name]
         output_prefix = campaign_dir / stage.name
@@ -490,44 +555,79 @@ def main(argv: Sequence[str] | None = None) -> int:
             command=command,
         )
         stage_results.append(result)
+        write_manifest(
+            manifest_path,
+            make_manifest(
+                campaign_id=campaign_id,
+                created_utc=campaign_created_utc,
+                status="planned" if args.dry_run else "running",
+                git_rev=git_rev,
+                args=args,
+                stage_results=stage_results,
+                campaign_dir=campaign_dir,
+                probe_result=probe_result,
+                dry_run=args.dry_run,
+            ),
+        )
+
         print(f"[{stage.name}] {stage.purpose}")
         print(f"  {command_text(command)}")
         execute_stage(result, args.dry_run)
 
-        manifest = make_manifest(
-            campaign_id=campaign_id,
-            args=args,
-            stage_results=stage_results,
-            campaign_dir=campaign_dir,
-            probe_result=probe_result,
-            dry_run=args.dry_run,
+        write_manifest(
+            manifest_path,
+            make_manifest(
+                campaign_id=campaign_id,
+                created_utc=campaign_created_utc,
+                status="planned" if args.dry_run else "running",
+                git_rev=git_rev,
+                args=args,
+                stage_results=stage_results,
+                campaign_dir=campaign_dir,
+                probe_result=probe_result,
+                dry_run=args.dry_run,
+            ),
         )
-        write_manifest(manifest_path, manifest)
 
-        if not args.dry_run and result.return_code not in (0, None):
+        if stage_failed(result, args.dry_run):
             print(
-                f"  stage failed: return_code={result.return_code} assessment={result.assessment}",
+                f"  stage failed/incomplete: return_code={result.return_code} "
+                f"assessment={result.assessment} note={result.note}",
                 file=sys.stderr,
             )
             if not args.continue_on_failure:
                 break
 
-    manifest = make_manifest(
-        campaign_id=campaign_id,
-        args=args,
-        stage_results=stage_results,
-        campaign_dir=campaign_dir,
-        probe_result=probe_result,
-        dry_run=args.dry_run,
-    )
-    write_manifest(manifest_path, manifest)
+    failed = [result for result in stage_results if stage_failed(result, args.dry_run)]
+    if args.dry_run:
+        final_status = "dry_run"
+    elif failed:
+        final_status = "failed_stage"
+    elif len(stage_results) != len(args.stages):
+        final_status = "incomplete"
+    else:
+        final_status = "completed"
 
-    failed = [result for result in stage_results if result.return_code not in (0, None)]
+    write_manifest(
+        manifest_path,
+        make_manifest(
+            campaign_id=campaign_id,
+            created_utc=campaign_created_utc,
+            status=final_status,
+            git_rev=git_rev,
+            args=args,
+            stage_results=stage_results,
+            campaign_dir=campaign_dir,
+            probe_result=probe_result,
+            dry_run=args.dry_run,
+        ),
+    )
+
     print(f"campaign manifest: {manifest_path}")
     if args.dry_run:
         print("dry-run complete; no hardware commands were executed")
         return 0
-    return 7 if failed else 0
+    return 7 if failed or len(stage_results) != len(args.stages) else 0
 
 
 if __name__ == "__main__":
