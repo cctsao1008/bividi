@@ -56,12 +56,11 @@ int main(int argc, char** argv) {
                   << ' ' << bividi::nori::transport_format_name(selected.format)
                   << (selected.bottom_up ? " bottom-up" : "") << '\n';
 
-        std::uint32_t captured = 0;
-        while (captured < frame_limit) {
+        for (std::uint32_t captured = 0; captured < frame_limit; ++captured) {
             auto frame = stream.next_frame();
             if (!frame.valid()) {
-                std::cout << "timeout/no-buffer\n";
-                continue;
+                std::cerr << "bividi-nori-grab: timeout/no-buffer\n";
+                return 4;
             }
 
             std::cout << "frame sequence=" << frame.sequence
@@ -75,7 +74,6 @@ int main(int argc, char** argv) {
             }
             std::cout << " actual=" << frame.mode.width << 'x' << frame.mode.height << '@' << frame.mode.fps
                       << ' ' << bividi::nori::transport_format_name(frame.mode.format) << '\n';
-            ++captured;
         }
         return 0;
     } catch (const std::exception& error) {

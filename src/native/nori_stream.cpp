@@ -209,6 +209,10 @@ struct Stream::Impl {
 #endif
         frame.mode = video_mode_from_vendor(vendor_frame->PixFormat);
         frame.host_receive_monotonic_ns = host_receive_ns;
+
+        if (!frame.valid()) {
+            throw Error("Nori returned an empty frame buffer");
+        }
         return frame;
     }
 
