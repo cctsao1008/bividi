@@ -68,6 +68,7 @@ if(BIVIDI_WITH_NORI_SDK)
 
     add_library(bividi_nori STATIC
         src/native/nori_probe.cpp
+        src/native/nori_stream.cpp
     )
     target_include_directories(bividi_nori
         PUBLIC include
@@ -79,7 +80,12 @@ if(BIVIDI_WITH_NORI_SDK)
     add_executable(bividi-nori-probe apps/bividi_nori_probe.cpp)
     target_link_libraries(bividi-nori-probe PRIVATE bividi_nori)
     target_compile_features(bividi-nori-probe PRIVATE cxx_std_17)
-    message(STATUS "Bividi Nori SDK probe enabled: ${_bividi_nori_library}")
+
+    add_executable(bividi-nori-grab apps/bividi_nori_grab.cpp)
+    target_link_libraries(bividi-nori-grab PRIVATE bividi_nori)
+    target_compile_features(bividi-nori-grab PRIVATE cxx_std_17)
+
+    message(STATUS "Bividi Nori SDK probe/pull stream enabled: ${_bividi_nori_library}")
 endif()
 
 if(BIVIDI_WITH_OPENCV)
