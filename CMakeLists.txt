@@ -69,6 +69,10 @@ if(BIVIDI_BUILD_TESTS)
     target_link_libraries(bividi_native_tests PRIVATE bividi_core)
     add_test(NAME bividi_native_tests COMMAND bividi_native_tests)
 
+    add_executable(bividi_capture_tests tests/native/test_capture.cpp)
+    target_link_libraries(bividi_capture_tests PRIVATE bividi_core)
+    add_test(NAME bividi_capture_tests COMMAND bividi_capture_tests)
+
     if(TARGET bividi_opencv)
         add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
         target_link_libraries(bividi_opencv_tests PRIVATE bividi_opencv)
