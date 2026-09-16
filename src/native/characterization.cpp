@@ -60,6 +60,32 @@ DistributionSummary summarize(const std::vector<double>& values) {
     return result;
 }
 
+BoundedSampleSeries::BoundedSampleSeries(std::size_t capacity)
+    : capacity_(std::max<std::size_t>(1, capacity)) {
+    samples_.reserve(capacity_);
+}
+
+void BoundedSampleSeries::push_back(double value) {
+    if (!std::isfinite(value)) return;
+
+    const auto sample_index = seen_count_++;
+    if (sample_index % sample_stride_ != 0) return;
+
+    if (samples_.size() >= capacity_) {
+        std::size_t out = 0;
+        for (std::size_t i = 0; i < samples_.size(); i += 2) {
+            samples_[out++] = samples_[i];
+        }
+        samples_.resize(out);
+        if (sample_stride_ <= std::numeric_limits<std::uint64_t>::max() / 2) {
+            sample_stride_ *= 2;
+        }
+        if (sample_index % sample_stride_ != 0) return;
+    }
+
+    samples_.push_back(value);
+}
+
 LinearTrendSummary linear_trend(
     const std::vector<double>& time_seconds,
     const std::vector<double>& values) {
