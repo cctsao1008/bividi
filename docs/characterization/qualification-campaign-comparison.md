@@ -73,10 +73,16 @@ python tools/compare_qualification_campaigns.py \
 
 ## Provenance handling
 
-The report preserves changes in:
+Campaign identity is preserved separately:
 
 ```text
-campaign ID / creation time
+campaign ID
+creation time
+```
+
+The report also preserves comparison-relevant provenance changes in:
+
+```text
 Git revision
 hostname / OS / release / machine
 device index / mode index
@@ -84,9 +90,9 @@ nominal FPS used for fault cadence
 fault cadence
 ```
 
-A provenance change is WARN-level context by default, not an automatic performance failure. Per-run device/SDK/ISP/FPGA provenance remains handled by the v2 characterization comparator.
+These provenance differences are **informational context**. They do not by themselves change PASS/WARN/FAIL. Per-run device/SDK/ISP/FPGA provenance remains handled by the v2 characterization comparator.
 
-This distinction is deliberate: a changed revision or host may explain a result, but the change itself is not proof of regression.
+This distinction is deliberate: a changed revision, host, or requested test condition may explain a result, but the change itself is not proof of regression. The stage evidence determines the regression verdict.
 
 ## Optional gates
 
