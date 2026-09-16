@@ -48,7 +48,7 @@ vendor binary dependency     = yes
 fully open device protocol   = not established
 ```
 
-Bividi should isolate this dependency in an optional capture backend rather than make the base host package depend on the vendor SDK.
+Bividi isolates this dependency in an optional capture backend rather than making the base host package depend on the vendor SDK.
 
 ## Frame acquisition surface
 
@@ -82,7 +82,7 @@ uint32_t Nori_Xvision_FreeFrameBuff(
     FRAME_BUFFER_DATA* frame);
 ```
 
-The Linux header explicitly describes the returned frame as a buffer from an internal queue and `FreeFrameBuff` as returning that frame to the internal pool. `FRAME_BUFFER_DATA` contains at least:
+The Linux header describes the returned frame as a buffer from an internal queue and `FreeFrameBuff` as returning that frame to the internal pool. `FRAME_BUFFER_DATA` contains at least:
 
 ```text
 PixFormat       VIDEO_INFO
@@ -91,18 +91,20 @@ pBufAddr        void*
 buff_Length     uint32
 buff_Offset     uint32
 index           uint32
-v4l2_buffer     vendor-exposed V4L2 buffer state
+buffer          vendor-exposed v4l2_buffer state
 ```
 
-The supplied `grab_image` sample follows the exact lifecycle:
+The supplied `grab_image` sample follows the lifecycle:
 
 ```text
 GetFrameBuff(...)
     ↓
-use pBufAddr / PixFormat / index / buff_Length
+use pBufAddr / PixFormat / buffer metadata / buff_Length
     ↓
 FreeFrameBuff(...)
 ```
+
+For continuity accounting, Bividi uses Linux `buffer.sequence` as the frame sequence. `FRAME_BUFFER_DATA::index` is treated as a buffer-pool index and is preserved separately; using it as a frame number would create false duplicate/drop results as buffers are recycled.
 
 Windows 10.00.10 instead returns a status code and fills an output frame pointer:
 
@@ -128,6 +130,8 @@ PixFormat     fps / format / width / height
 capacity      uint32
 ```
 
+Bividi uses Windows `u_FrameNum` as the normalized frame sequence.
+
 The Windows API documentation also states that every successfully acquired frame resource must be returned through `Nori_Xvision_FreeFrameBuff` after use.
 
 This maps directly onto Bividi's native lifetime boundary:
@@ -139,20 +143,20 @@ FrameLease(deleter = Nori_Xvision_FreeFrameBuff)
         +
 frame bytes / sequence / host receive time
         ↓
-DECXIN decode / downstream consumers
+transport normalization / DECXIN decode
         ↓
-last lease released
+last vendor-buffer lease released
         ↓
 Nori_Xvision_FreeFrameBuff
 ```
 
-The vendor frame structs and the Linux/Windows ABI differences must remain private to platform-specific backend translation units. They must not appear in Bividi's public capture/core headers.
+The vendor frame structs and the Linux/Windows ABI differences remain private to backend translation units. They do not appear in Bividi's public capture/core headers.
 
-The first live backend should prefer this pull-buffer path over callback acquisition because ownership and backpressure are explicit and directly testable. Callback mode can remain optional until profiling or device behavior demonstrates a need for it.
+The first live backend uses this pull-buffer path rather than callback acquisition because ownership and backpressure are explicit and directly testable. Callback mode remains optional until profiling or device behavior demonstrates a need for it.
 
 ### Transport-format consequence
 
-The SDK returns transport-dependent payloads, not necessarily the top-down BGR24 image currently required by the DECXIN encoded-pixel decoder.
+The SDK returns transport-dependent payloads, not necessarily the top-down BGR24 image required by the DECXIN encoded-pixel decoder.
 
 The Linux sample explicitly handles:
 
@@ -161,11 +165,9 @@ VIDEO_MEDIA_TYPE_MJPG
 VIDEO_MEDIA_TYPE_YUYV
 ```
 
-and uses a vendor helper to convert YUYV to BGR24 when needed.
+The Windows public surface includes MJPEG/YUY2 and SDK-decoded BGR24 variants. The Windows documentation for the BGR24 conversion modes describes the image memory as **bottom-up**. Bividi's `ImageView` uses a positive row stride and the DECXIN decoder addresses the encoded image top-down, so the Windows bottom-up representation must not be passed into the decoder unchanged.
 
-The Windows public surface includes MJPEG/YUY2 and SDK-decoded BGR24 variants. The Windows documentation for the BGR24 conversion modes describes the image memory as **bottom-up**. Bividi's current `ImageView` uses a positive row stride and assumes the decoded DECXIN geometry is addressed top-down, so the Windows bottom-up representation must not be passed into the decoder unchanged.
-
-Initial implementation rule:
+Implemented normalization rule:
 
 ```text
 vendor transport frame
@@ -177,7 +179,7 @@ top-down BGR24 4000×1200
 DECXIN encoded-pixel decoder
 ```
 
-For correctness-first bring-up, MJPEG → normal image decode or an explicit YUYV/BGR normalization copy is acceptable. Zero-copy optimization must wait until the actual live mode, buffer orientation, and decode cost are measured. Do not complicate the public image contract merely to preserve a premature zero-copy claim.
+For correctness-first bring-up, an explicit normalization copy is acceptable. For asynchronous viewer/web use, Bividi intentionally requests owned normalized output so retaining the latest preview does not pin a vendor SDK buffer. Optimization remains evidence-driven after live profiling.
 
 ## Trigger surface
 
@@ -190,22 +192,87 @@ HARDWARE_TRIGGER_MODE
 COMMAND_TRIGGER_MODE
 ```
 
-The API exposes trigger get/set operations, including:
+Both expose:
 
 ```text
 Nori_Xvision_GetTriggerMode
 Nori_Xvision_SetTriggerMode
 ```
 
-The SDKs also include software-trigger and command-trigger examples. Windows additionally contains a trigger-control sample project.
+Software-trigger frequency exists on both supplied revisions but the API name differs:
 
-The presence of generic SDK support does not prove that every mode is enabled by the purchased DECXIN AR0234 module/firmware; this must be verified on the device.
+```text
+Linux 10.00.06:
+  Nori_Xvision_GetSoftTriggerFrequency
+  Nori_Xvision_SetSoftTriggerFrequency
 
-## RAW / image-control surface
+Windows 10.00.10:
+  Nori_Xvision_GetTriggerFrequency
+  Nori_Xvision_SetTriggerFrequency
+```
+
+The Chinese SDK comments describe the frequency unit as Hz; the English comments also warn that the value may be implementation-specific. This must therefore be measured on the delivered firmware before Bividi treats it as a stable normalized control.
+
+The SDK also exposes command-trigger operations where one call requests one frame after selecting command-trigger mode.
+
+The current Bividi session normalizes trigger-mode selection only. It does **not** yet manufacture software-trigger frequency or command-trigger events. Selecting a non-free-run mode can therefore legitimately stop continuous output until the appropriate trigger source is configured/exercised.
+
+The presence of generic SDK support does not prove that every trigger mode is enabled by the purchased DECXIN AR0234 module/firmware; this must be verified on the device.
+
+## Shutter / gain control surface
+
+Both supplied SDK revisions expose sensor-level shutter and gain controls:
+
+```text
+Nori_Xvision_GetSensorShutter
+Nori_Xvision_SetSensorShutter
+Nori_Xvision_GetSensorGain
+Nori_Xvision_SetSensorGain
+```
+
+The supplied documentation describes sensor shutter in microseconds. `GetSensorGain` returns current/minimum/maximum/step values, so Bividi treats the UI gain request as a requested multiplier and quantizes it to the SDK-reported range/step rather than assuming an arbitrary continuous scale.
+
+Before changing shutter/gain, both SDKs require manual exposure mode, but the platform API differs.
+
+Windows 10.00.10 uses camera-terminal control:
+
+```text
+Nori_Xvision_GetCameraTerminalControl(CameraControl_Exposure, ...)
+Nori_Xvision_SetCameraTerminalControl(
+    CameraControl_Exposure,
+    current_value,
+    CameraControl_Flags_Manual)
+```
+
+Linux 10.00.06 uses processing-unit/V4L2 control:
+
+```text
+Nori_Xvision_GetProcessingUnitControl(V4L2_CID_EXPOSURE_AUTO, ...)
+Nori_Xvision_SetProcessingUnitControl(
+    V4L2_CID_EXPOSURE_AUTO,
+    V4L2_EXPOSURE_MANUAL)
+```
+
+These platform-specific prerequisites remain inside the Nori backend. The public session surface only speaks in normalized shutter/gain requests.
+
+Configured/read-back shutter must not be conflated with DECXIN embedded exposure timing. Bividi therefore keeps:
+
+```text
+control domain:
+  shutter_us
+
+embedded device timing domain:
+  ES
+  EE
+  EE - ES
+```
+
+as distinct evidence.
+
+## Other RAW / image-control surface
 
 Both SDK archives contain a `device_raw_output_control` example. The SDK surface also includes examples for:
 
-- shutter/gain control;
 - white-balance gain control;
 - 3A control;
 - processing-unit controls;
@@ -216,7 +283,7 @@ Both SDK archives contain a `device_raw_output_control` example. The SDK surface
 
 These are capabilities of the vendor SDK surface, not requirements for Bividi's normalized observation API.
 
-Bividi should initially use only the minimal subset needed for reliable capture, timing, identification, and required controls.
+Bividi initially uses only the minimal subset needed for reliable capture, timing, identification, and required engineering controls.
 
 ## Device/version information
 
@@ -273,10 +340,12 @@ Nori SDK / UVC / file fixture
             ↓
       DECXIN decoder
             ↓
- normalized sensor observation
+ shared capture/session boundary
+            ↓
+ viewer / web / calibration / recording
 ```
 
-Offline fixtures and live capture should share the same DECXIN decode/normalization path. The SDK should only be responsible for acquiring frames and operating device controls, not defining Bividi's public data model.
+Offline fixtures and live capture share the same DECXIN decode/normalization logic. The SDK is responsible for acquiring frames and operating device controls, not for defining Bividi's public observation model.
 
 ## Bring-up checks after hardware arrival
 
@@ -284,14 +353,15 @@ Verify, in order:
 
 1. device enumeration and stable identity;
 2. reported modes versus the approval sheet;
-3. 4000×1200 MJPEG/YUYV live behavior;
+3. 4000×1200 MJPEG/YUYV/BGR24 live behavior;
 4. presence and location of the encoded timestamp/IMU region;
 5. frame numbering and SDK `Frame_Time` behavior;
 6. embedded ES/EE timestamp continuity;
 7. IMU cadence and continuity;
-8. trigger-mode support on this exact firmware;
-9. disconnect/reconnect behavior;
-10. sustained capture, drop rate, jitter, and memory stability.
+8. free-run/software/hardware/command trigger behavior on this exact firmware;
+9. shutter/gain readback and response;
+10. disconnect/reconnect behavior;
+11. sustained capture, drop rate, jitter, and memory stability.
 
 Firmware-update APIs are intentionally out of the initial Bividi bring-up path unless a verified backup/recovery procedure is established.
 
