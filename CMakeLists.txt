@@ -101,6 +101,19 @@ if(BIVIDI_WITH_OPENCV)
     else()
         message(STATUS "OpenCV core not found; building dependency-light Bividi core only")
     endif()
+
+    find_package(OpenCV QUIET COMPONENTS core imgproc imgcodecs)
+    if(OpenCV_FOUND)
+        add_library(bividi_nori_opencv STATIC
+            src/native/nori_opencv.cpp
+        )
+        target_include_directories(bividi_nori_opencv PUBLIC include ${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(bividi_nori_opencv PUBLIC bividi_core ${OpenCV_LIBS})
+        target_compile_features(bividi_nori_opencv PUBLIC cxx_std_17)
+        message(STATUS "Bividi Nori transport normalization enabled")
+    else()
+        message(STATUS "OpenCV imgproc/imgcodecs not found; Nori transport normalization disabled")
+    endif()
 endif()
 
 if(BIVIDI_BUILD_VIEWER)
@@ -152,6 +165,12 @@ if(BIVIDI_BUILD_TESTS)
         add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
         target_link_libraries(bividi_opencv_tests PRIVATE bividi_opencv)
         add_test(NAME bividi_opencv_tests COMMAND bividi_opencv_tests)
+    endif()
+
+    if(TARGET bividi_nori_opencv)
+        add_executable(bividi_nori_opencv_tests tests/native/test_nori_opencv.cpp)
+        target_link_libraries(bividi_nori_opencv_tests PRIVATE bividi_nori_opencv)
+        add_test(NAME bividi_nori_opencv_tests COMMAND bividi_nori_opencv_tests)
     endif()
 
     if(TARGET bividi-viewer)
