@@ -194,6 +194,14 @@ if(BIVIDI_BUILD_TESTS)
     target_link_libraries(bividi_characterization_tests PRIVATE bividi_core)
     add_test(NAME bividi_characterization_tests COMMAND bividi_characterization_tests)
 
+    # The live characterizer only links when the vendor SDK + OpenCV path is
+    # enabled, but its translation unit deliberately depends only on Bividi
+    # public declarations. Compile it everywhere so normal CI catches C++/API
+    # drift without requiring vendor binaries or physical hardware.
+    add_library(bividi_nori_characterize_compilecheck OBJECT apps/bividi_nori_characterize.cpp)
+    target_include_directories(bividi_nori_characterize_compilecheck PRIVATE include)
+    target_compile_features(bividi_nori_characterize_compilecheck PRIVATE cxx_std_17)
+
     if(TARGET bividi_opencv)
         add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
         target_link_libraries(bividi_opencv_tests PRIVATE bividi_opencv)
