@@ -1,0 +1,51 @@
+{
+  "schema": "bividi.calibration.camera_imu.v1",
+  "calibration_id": "synthetic-camera-imu-example-v1",
+  "created_utc": "2026-09-16T00:00:00+00:00",
+  "device": {
+    "model": "synthetic-rig",
+    "serial": "SYNTHETIC"
+  },
+  "camera_reference": {
+    "camera_id": "camera_a",
+    "frame": "camera_a_optical",
+    "width": 1920,
+    "height": 1200
+  },
+  "imu_reference": {
+    "model": "ICM-42688-P",
+    "frame": "imu",
+    "imu_calibration_id": "synthetic-imu-example-v1"
+  },
+  "transform": {
+    "from_frame": "imu",
+    "to_frame": "camera_a_optical",
+    "matrix": [
+      [1.0, 0.0, 0.0, 0.03],
+      [0.0, 1.0, 0.0, 0.0],
+      [0.0, 0.0, 1.0, 0.01],
+      [0.0, 0.0, 0.0, 1.0]
+    ],
+    "translation_unit": "m"
+  },
+  "time_offset": {
+    "definition": "t_imu_s = t_camera_reference_s + offset_s",
+    "camera_time_reference": "exposure_end",
+    "offset_s": 0.00001,
+    "method": "synthetic example only"
+  },
+  "frames": {
+    "handedness": "right",
+    "camera_axes": "+X right, +Y down, +Z forward (synthetic example only)",
+    "imu_axes": "+X forward, +Y left, +Z up (synthetic example only)"
+  },
+  "quality": {
+    "warnings": [
+      "Synthetic example only. Transform, axis convention, and time offset are not DECXIN AR0234 measurements."
+    ]
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "tool": "repository-example"
+  }
+}
