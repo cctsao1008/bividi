@@ -2,7 +2,7 @@
 
 Owner: Issue #35  
 Reference device: DECXIN AR0234 stereo + ICM-42688-P  
-Status: procedure ready; physical execution pending delivered hardware
+Status: procedure + campaign runner ready; physical execution pending delivered hardware
 
 ## Purpose
 
@@ -26,10 +26,67 @@ A single successful preview is not qualification evidence.
 ```text
 bividi-nori-probe
 bividi-nori-characterize
+tools/run_ar0234_qualification.py
 tools/compare_nori_characterization.py
 ```
 
 Optional host-native tools remain useful for independent USB/UVC evidence, as described in `usb-uvc-test-plan.md`.
+
+## Campaign runner
+
+`tools/run_ar0234_qualification.py` automates Q0 through Q5 while preserving the existing measurement boundary: it orchestrates `bividi-nori-probe` and `bividi-nori-characterize`; it does not reimplement capture, timing, or assessment logic.
+
+Start with a dry run so the exact campaign commands and artifact paths are reviewable without touching hardware:
+
+```bash
+python tools/run_ar0234_qualification.py \
+  --device <DEVICE> \
+  --mode <MODE> \
+  --stages q1,q2,q3 \
+  --output-dir qualification-runs \
+  --dry-run
+```
+
+A real staged campaign can then be launched explicitly:
+
+```bash
+python tools/run_ar0234_qualification.py \
+  --device <DEVICE> \
+  --mode <MODE> \
+  --stages q1,q2,q3 \
+  --output-dir qualification-runs
+```
+
+Q4/Q5 use the characterizer's frame-based fault injector. The campaign runner therefore requires the **actual probed nominal FPS** and converts a requested wall-time cadence to frames rather than assuming 30 or 60 FPS:
+
+```bash
+python tools/run_ar0234_qualification.py \
+  --device <DEVICE> \
+  --mode <MODE> \
+  --stages q4,q5 \
+  --nominal-fps <PROBED_FPS> \
+  --fault-period-s 60 \
+  --output-dir qualification-runs
+```
+
+Each campaign gets its own directory and `campaign.json` manifest containing:
+
+```text
+host / OS / architecture / Python provenance
+Git revision when available
+selected device / mode / stages
+explicit nominal FPS used for fault cadence
+probe command/result path
+exact characterizer command per stage
+stage start/end/elapsed time
+return code + v2 assessment
+summary/log artifact paths
+physical Q6/Q7 status as not automated
+```
+
+The runner stops on the first non-zero characterizer result by default. `--continue-on-failure` is available only when the test plan explicitly requires collecting later-stage evidence after a failure.
+
+The campaign runner deliberately does **not** automate Q6/Q7. SDK stream reopen is not a substitute for removing USB transport or power.
 
 ## Session naming
 
