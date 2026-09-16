@@ -21,7 +21,8 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 
 - [`characterization/usb-uvc-test-plan.md`](characterization/usb-uvc-test-plan.md) — live host/interface characterization for the AR0234 reference device
 - [`characterization/stereo-transport-test-plan.md`](characterization/stereo-transport-test-plan.md) — live camera A/B mapping and transport verification
-- [`characterization/nori-live-characterization.md`](characterization/nori-live-characterization.md) — `bividi-nori-characterize` usage, artifacts, metrics, and clock-domain rules
+- [`characterization/nori-live-characterization.md`](characterization/nori-live-characterization.md) — `bividi-nori-characterize` usage, artifacts, metrics, RSS/recovery trials, and clock-domain rules
+- [`characterization/ar0234-qualification-protocol.md`](characterization/ar0234-qualification-protocol.md) — staged physical qualification from 60 s baseline through soak, software recovery, true USB fault testing, and regression comparison
 
 ## Research / interoperability
 
