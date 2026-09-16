@@ -3,25 +3,29 @@
 Owner: Issue #35  
 Reference device: DECXIN AR0234 stereo + ICM-42688-P  
 Tool: `bividi-nori-characterize`  
-Status: implementation available; physical AR0234 measurements pending
+Status: RSS + controlled recovery characterization implemented; physical AR0234 measurements pending
 
 ## Purpose
 
-`bividi-nori-characterize` is the first repeatable measurement harness for the live Nori capture path. It runs the same transport-normalization and DECXIN decode path used by the live session, but records per-frame evidence instead of rendering UI previews.
+`bividi-nori-characterize` is the repeatable measurement harness for the live Nori capture path. It runs the same transport-normalization and DECXIN decode path used by the live session, but records evidence rather than rendering UI previews.
 
 ```text
 Nori SDK pull buffer
         ↓
 RawFrame
         ↓
-MJPEG / YUYV / BGR24 normalization
+owned MJPEG / YUYV / BGR24 normalization
         ↓
 DECXIN decoder
         ↓
-per-frame trace + statistical summary
+per-frame trace
+RSS samples
+controlled stop/start + software reconnect trials
+        ↓
+statistical / recovery summary
 ```
 
-The tool is deliberately evidence-oriented. It does not rename camera A/B to left/right, does not infer synchronization quality from host arrival time, and does not subtract timestamps from unrelated clock epochs.
+The tool is deliberately evidence-oriented. It does not rename camera A/B to left/right, infer synchronization quality from host arrival time, or subtract timestamps from unrelated clock epochs.
 
 ## Build
 
@@ -34,7 +38,7 @@ cmake -S . -B build-nori \
 cmake --build build-nori --config Release
 ```
 
-Normal CI does not require vendor binaries. The characterizer translation unit is nevertheless compile-checked in hardware-independent CI so public API/C++ drift is caught on both Linux and Windows.
+Normal CI does not require vendor binaries. The characterizer translation unit is nevertheless compile-checked in hardware-independent CI, and the shared characterization primitives are unit-tested on Linux and Windows.
 
 ## Recommended bring-up sequence
 
@@ -44,7 +48,7 @@ First enumerate the delivered device and mode indexes:
 bividi-nori-probe
 ```
 
-Then perform a short smoke run before longer characterization:
+Then perform a short smoke run before introducing recovery faults:
 
 ```bash
 bividi-nori-characterize \
@@ -52,103 +56,212 @@ bividi-nori-characterize \
   --mode 0 \
   --duration-s 60 \
   --warmup-frames 30 \
+  --rss-sample-ms 1000 \
   --output-prefix ar0234_smoke
 ```
 
 `device=0` and `mode=0` are examples only. Use the actual indexes reported by `bividi-nori-probe`.
 
-Useful staged runs after the first successful capture are:
+Useful staged runs are:
 
 ```text
-60 s   → basic continuity / decode sanity
+60 s   → basic decode / continuity / RSS sanity
 10 min → sustained FPS / jitter / intermittent anomalies
-1 h    → long-run continuity evidence
+1 h    → long-run continuity + RSS trend
+fault run → controlled stop/start and stream reopen/recovery
 ```
 
-Long-run process-memory growth and deliberate disconnect/reconnect fault injection are still separate #35 checks; the first harness does not claim to automate them yet.
-
-## Stop conditions
-
-The default measurement window is 60 seconds. An optional decoded-frame limit can also be supplied:
+Example controlled recovery run:
 
 ```bash
-bividi-nori-characterize --duration-s 600 --frames 36000
+bividi-nori-characterize \
+  --device 0 \
+  --mode 0 \
+  --duration-s 600 \
+  --rss-sample-ms 1000 \
+  --stop-start-every-frames 3600 \
+  --stop-start-pause-ms 250 \
+  --reconnect-every-frames 7200 \
+  --reconnect-pause-ms 500 \
+  --recovery-timeout-ms 10000 \
+  --output-prefix ar0234_recovery_10m
 ```
 
-When both are supplied, the run stops at whichever condition is reached first.
+The frame intervals above are examples, not assumptions about the actual delivered FPS.
 
-Other useful options:
+## Fault model
+
+Two controlled fault/recovery operations are available.
+
+### Stop/start
 
 ```text
---warmup-frames N
---timeout-ms N
---output-prefix PATH
---no-trigger-config
+Nori VideoStop
+wait configured pause
+Nori VideoStart
+wait for first valid decoded frame
 ```
 
-The default stream setup requests free-run unless `--no-trigger-config` is used.
+This measures stream restart behavior without destroying the backend object.
+
+### Software reconnect
+
+```text
+destroy nori::Stream
+wait configured pause
+construct nori::Stream with the same requested device/mode
+verify read-back mode
+wait for first valid decoded frame
+```
+
+This is a **software close/reopen trial**. It does not claim to emulate a physical USB unplug, hub reset, cable fault, bus reset, or device power cycle. Those remain separate physical fault-injection tests.
+
+For each injected event the tool records the operation result, first-valid-frame recovery latency, pre/post sequence values, and pre/post raw exposure-start counters. A sequence/counter decrease is useful reset evidence but must still be interpreted with finite-counter wrap semantics in mind.
+
+## Planned gaps versus spontaneous faults
+
+Intentional stop/reconnect downtime must not be counted as an ordinary dropped-frame burst.
+
+The tool therefore starts a new **continuity epoch** after each injected fault:
+
+```text
+active epoch 0
+    ↓ injected stop/reconnect
+active epoch 1
+    ↓ injected stop/reconnect
+active epoch 2
+```
+
+Drop / duplicate / out-of-order statistics are accumulated **within active epochs**. The planned downtime is instead measured through the fault-event recovery record.
+
+This keeps these two questions separate:
+
+```text
+Did normal acquisition lose continuity?
+!=
+How long did an intentional recovery operation take?
+```
+
+## RSS / memory characterization
+
+Current-process resident memory is sampled with native host APIs:
+
+```text
+Windows → process working set
+Linux   → /proc/self/statm resident pages
+macOS   → task resident size
+```
+
+Default sampling interval:
+
+```text
+1000 ms
+```
+
+Use `--rss-sample-ms 0` to disable RSS sampling.
+
+The summary reports:
+
+- RSS min / max / mean / P50 / P95 / P99;
+- ordinary-least-squares RSS slope in bytes/s;
+- the same slope expressed as MiB/hour;
+- regression R².
+
+The RSS slope is **descriptive evidence**, not by itself a memory-leak verdict. Long runs, repeatability, allocation warm-up, SDK behavior, OS paging, and workload changes all matter.
+
+To keep the measurement tool from creating an artificial linear RSS slope, high-rate in-memory summary inputs are bounded. Each series pre-reserves a fixed sample capacity and is deterministically decimated when full. The per-frame CSV remains the lossless evidence source.
+
+## Error streaks and recovery deadline
+
+The harness records both totals and longest consecutive streaks for:
+
+```text
+GetFrameBuff timeouts
+decode errors
+```
+
+Injected faults have an explicit first-valid-frame recovery deadline controlled by:
+
+```text
+--recovery-timeout-ms
+```
+
+An operation exception or missed recovery deadline is recorded as a failed fault/recovery trial and causes the final assessment to fail.
 
 ## Output artifacts
 
-Each run writes two small artifacts:
+Each run writes four artifacts:
 
 ```text
-<PREFIX>.csv   per-frame trace
-<PREFIX>.json  run summary + distributions + provenance
+<PREFIX>.csv         lossless per-frame trace
+<PREFIX>.rss.csv     periodic process RSS samples
+<PREFIX>.events.csv  injected fault/recovery events
+<PREFIX>.json        run summary + distributions + provenance
 ```
 
-### CSV trace
+### Per-frame trace
 
-The trace currently records:
+The frame trace records:
 
-- sample index and platform-normalized frame sequence;
-- host monotonic receive timestamp and frame interval;
-- SDK frame-time representation, converted to microseconds when representable, plus same-domain interval;
+- sample index and continuity epoch;
+- recovery-event ID on the first frame after an injected fault;
+- platform-normalized frame sequence;
+- host monotonic receive timestamp and same-domain interval;
+- SDK frame-time representation and same-domain interval;
 - raw and extended DECXIN exposure-start/exposure-end timestamps;
-- exposure-start and exposure-end frame intervals;
-- exposure duration (`EE - ES`);
+- exposure-start/end frame intervals and exposure duration (`EE - ES`);
 - total/valid IMU sample counts;
 - first/last valid IMU timestamp and cross-frame IMU gap where available;
-- raw transport byte length;
-- actual returned transport format and geometry;
+- raw transport byte length and returned format/geometry;
 - vendor buffer index/offset provenance where exposed.
+
+### RSS trace
+
+The RSS CSV records:
+
+```text
+sample index
+elapsed seconds
+RSS bytes
+RSS MiB
+```
+
+### Event trace
+
+The event CSV records:
+
+```text
+event ID / type
+frame at injection
+configured pause
+operation success
+first-frame recovery success / latency
+pre/post sequence
+sequence decrease/reset evidence
+pre/post raw ES counter
+raw device-counter decrease/reset evidence
+error text
+```
 
 ### JSON summary
 
-The summary records device/firmware provenance and distributions including:
+The JSON schema is currently:
 
 ```text
-host frame interval
-SDK frame-time interval
-embedded ES interval
-embedded EE interval
-exposure duration
-IMU sample interval
-IMU cross-frame gap
-valid IMU samples per frame
-raw frame byte size
+bividi.nori.characterization.v2
 ```
 
-Each distribution includes:
+It contains device/SDK/ISP/FPGA provenance, requested/read-back mode, run counters, continuity statistics, recovery statistics, RSS trend, bounded-summary sampling provenance, timing/IMU distributions, and the individual fault-event records.
+
+The lightweight assessment is intentionally conservative:
 
 ```text
-count
-min
-max
-mean
-p50
-p95
-p99
+FAIL → no decoded frames, injected operation failure, or recovery failure
+WARN → timeouts/decode errors/mode mismatch or spontaneous continuity anomalies
+PASS → none of the above observed
 ```
 
-The summary also records:
-
-- decoded/raw frame counts;
-- timeout and decode-error counts;
-- selected-mode versus returned-mode mismatch count;
-- measured FPS;
-- frame-sequence drops, duplicates, out-of-order observations, and 32-bit wrap events where applicable;
-- SDK timestamp-encoding changes.
+RSS slope is not currently used as an automatic PASS/FAIL threshold because no physical-device baseline has been established yet.
 
 ## Clock-domain rule
 
@@ -162,24 +275,24 @@ embedded DECXIN ES / EE / IMU time
 
 They are not assumed to share an epoch.
 
-The first characterization harness therefore compares **intervals inside each domain** and preserves the raw/extended values. It intentionally does not report an absolute `host - device` offset.
+The harness compares intervals inside each domain and preserves raw/extended values. It intentionally does not report an absolute `host - device` offset.
 
 Camera↔IMU spatial/temporal calibration remains owned by #47, where Kalibr or another proven external solver can operate on a deliberately prepared dataset.
 
 ## Sequence semantics
 
-The backend already normalizes the vendor sequence source differently by platform:
+The backend normalizes the vendor sequence source differently by platform:
 
 ```text
 Linux   → v4l2_buffer.sequence (32-bit semantics)
 Windows → Nori u_FrameNum
 ```
 
-The characterizer applies explicit 32-bit wrap handling on Linux and records drops/duplicates/out-of-order observations separately.
+The characterizer applies explicit 32-bit wrap handling on Linux. Sequence gaps are stronger continuity evidence than comparing decoded-frame count with nominal FPS alone.
 
-Sequence gaps are stronger evidence of capture discontinuity than comparing decoded-frame count with nominal FPS alone. The JSON still reports nominal expected frames over the measured host interval as contextual information, not as the authoritative drop counter.
+When fault injection is enabled, sequence continuity is deliberately segmented at the injected boundary; pre/post values remain in the event record so reset behavior is still visible without falsely reporting planned downtime as ordinary drops.
 
-## What this tool does not prove
+## What this tool still does not prove
 
 A clean run does not by itself prove:
 
@@ -188,13 +301,14 @@ A clean run does not by itself prove:
 - hardware synchronization error in microseconds;
 - camera↔IMU temporal offset;
 - generic UVC behavior outside the Nori backend;
-- disconnect/reconnect recovery;
-- long-run process-memory stability.
+- physical USB unplug/replug recovery;
+- hub/bus/power fault recovery;
+- absence of a memory leak from one short RSS run.
 
-Those remain explicit characterization/calibration tasks under #35, #8, and #47.
+Those remain explicit characterization/calibration tasks under #35, #8, #10, and #47.
 
 ## Suggested evidence retention
 
-For each physical test session, retain the JSON summary and CSV trace with a stable session name that identifies at least host/platform, device, mode, and run purpose. Large raw video captures should remain outside normal Git history; keep hashes or external references when needed.
+For each physical test session, retain the JSON summary and the three CSV traces with a stable session name identifying host/platform, device, mode, and test purpose. Large raw video captures should remain outside normal Git history; retain hashes or external references when needed.
 
 Related: #35, #8, #10, #47.
