@@ -22,6 +22,29 @@ optional engineering viewer
 
 The current active physical reference is stereo AR0234 + IMU, but the native core remains platform/device independent.
 
+## Capture-buffer lifetime boundary
+
+`ImageView` is deliberately non-owning. A live platform backend may receive a frame from a vendor-owned buffer pool whose lifetime ends only after an explicit release call.
+
+The native capture boundary therefore carries ownership separately from image geometry:
+
+```text
+FrameLease
+  owns/releases backend buffer lifetime
+       ↓
+CapturedFrame
+  FrameLease
+  transport ImageView
+  sequence
+  host_receive_monotonic_ns
+       ↓
+Device Adapter / Decoder
+```
+
+This preserves zero-copy views without turning `ImageView` into a vendor-aware owning container. Copying a `CapturedFrame` shares the lease; the backing resource is released only after the final lease is destroyed. Backends may also use an empty lease for static/offline buffers whose lifetime is managed elsewhere.
+
+Host receive time is explicitly a different clock domain from device/exposure/IMU timestamps. Device time is decoded later by the device adapter and must not be replaced by the host receive timestamp.
+
 ## Why C++ + OpenCV
 
 The high-rate camera path is dominated by buffer movement, image decoding, color conversion, and image processing. These operations should stay in native code and use existing native libraries rather than per-pixel Python loops.
@@ -88,7 +111,7 @@ Those remain runtime-discovered device capabilities.
 ## Current native targets
 
 `bividi_core`
-: dependency-light C++17 core containing the platform-independent DECXIN/Nori decoder and image-view types.
+: dependency-light C++17 core containing the platform-independent DECXIN/Nori decoder and image/capture boundary types.
 
 `bividi_opencv`
 : optional OpenCV bridge built only when OpenCV is available.
@@ -97,7 +120,10 @@ Those remain runtime-discovered device capabilities.
 : optional OpenCV HighGUI engineering UI. The initial source is synthetic; future live controls bind through the backend/control boundary rather than calling vendor APIs directly.
 
 `bividi_native_tests`
-: hardware-independent golden-vector and rollover tests.
+: hardware-independent DECXIN golden-vector and rollover tests.
+
+`bividi_capture_tests`
+: validates capture-buffer lifetime sharing/release semantics, host receive metadata, and explicit capture counters without hardware.
 
 `bividi_opencv_tests`
 : validates that a stride-aware `ImageView` becomes a borrowed `cv::Mat` header without copying and that unsupported pixel formats are rejected explicitly.
@@ -138,6 +164,6 @@ Ubuntu + libopencv-dev
 
 The OpenCV job runs the viewer through `--self-test`, so CI does not require a display server.
 
-Live camera acquisition remains outside this checkpoint and continues under #35. The next native work should connect a platform capture backend to the same decoder and `ImageView` boundary rather than creating a second device-specific data path.
+Live camera acquisition remains outside this checkpoint and continues under #35. The next native work should connect a platform capture backend to the same decoder and `ImageView`/`FrameLease` boundary rather than creating a second device-specific data path.
 
 Related: #35, #38, #40, #41.
