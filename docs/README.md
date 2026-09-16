@@ -28,6 +28,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 ## Calibration
 
 - [`calibration/inertial-camera-imu.md`](calibration/inertial-camera-imu.md) — #47 IMU and camera↔IMU artifact semantics, SI units, frame/time-offset conventions, validation, and Kalibr adapter mapping
+- [`calibration/camera-imu-timestamp-audit.md`](calibration/camera-imu-timestamp-audit.md) — lossless Nori IMU timestamp/raw-count recording plus device-domain exposure↔IMU cadence, rollover, and nearest-sample audit
 
 ## Research / interoperability
 
