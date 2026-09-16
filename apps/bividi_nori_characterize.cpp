@@ -64,6 +64,13 @@ struct RunData {
     std::optional<SdkTimestampEncoding> sdk_encoding;
 };
 
+struct ImuFrameInfo {
+    std::optional<std::uint64_t> first;
+    std::optional<std::uint64_t> last;
+    std::optional<std::uint64_t> cross_frame_gap;
+    std::uint64_t valid_count = 0;
+};
+
 std::uint32_t parse_u32(const char* value, const char* name) {
     try {
         std::size_t used = 0;
@@ -180,34 +187,30 @@ void write_distribution(std::ostream& out, const char* indent, const Distributio
         << ",\"p99\":" << s.p99 << '}';
 }
 
-std::pair<std::optional<std::uint64_t>, std::optional<std::uint64_t>> imu_bounds(
-    const DecodedCapture& capture,
-    RunData& data) {
-    std::optional<std::uint64_t> first;
-    std::optional<std::uint64_t> last;
-    std::optional<std::uint64_t> previous;
-    std::uint64_t valid_count = 0;
+ImuFrameInfo measure_imu_frame(const DecodedCapture& capture, RunData& data) {
+    ImuFrameInfo info{};
+    std::optional<std::uint64_t> previous_in_frame;
 
     for (const auto& sample : capture.decoded.timing.imu_samples) {
         if (!sample.valid) continue;
-        ++valid_count;
+        ++info.valid_count;
         const auto t = sample.extended_time_us;
-        if (!first.has_value()) first = t;
-        if (previous.has_value() && t > *previous) {
-            data.imu_interval_us.push_back(static_cast<double>(t - *previous));
+        if (!info.first.has_value()) info.first = t;
+        if (previous_in_frame.has_value() && t > *previous_in_frame) {
+            data.imu_interval_us.push_back(static_cast<double>(t - *previous_in_frame));
         }
-        previous = t;
-        last = t;
+        previous_in_frame = t;
+        info.last = t;
     }
 
-    data.imu_valid_samples_per_frame.push_back(static_cast<double>(valid_count));
-    if (first.has_value() && data.previous_imu_last_us.has_value() &&
-        *first > *data.previous_imu_last_us) {
-        data.imu_cross_frame_gap_us.push_back(
-            static_cast<double>(*first - *data.previous_imu_last_us));
+    data.imu_valid_samples_per_frame.push_back(static_cast<double>(info.valid_count));
+    if (info.first.has_value() && data.previous_imu_last_us.has_value() &&
+        *info.first > *data.previous_imu_last_us) {
+        info.cross_frame_gap = *info.first - *data.previous_imu_last_us;
+        data.imu_cross_frame_gap_us.push_back(static_cast<double>(*info.cross_frame_gap));
     }
-    if (last.has_value()) data.previous_imu_last_us = last;
-    return {first, last};
+    if (info.last.has_value()) data.previous_imu_last_us = info.last;
+    return info;
 }
 
 bool mode_matches(const VideoMode& selected, const VideoMode& actual) noexcept {
@@ -395,20 +398,7 @@ int main(int argc, char** argv) {
             const auto exposure_duration = capture.decoded.timing.exposure_duration_us();
             data.exposure_duration_us.push_back(static_cast<double>(exposure_duration));
 
-            const auto imu = imu_bounds(capture, data);
-            std::uint64_t valid_imu = 0;
-            for (const auto& sample : capture.decoded.timing.imu_samples) {
-                if (sample.valid) ++valid_imu;
-            }
-            std::optional<std::uint64_t> imu_cross_gap;
-            if (!data.imu_cross_frame_gap_us.empty()) {
-                // Only emit the newest gap if this frame actually produced one.
-                if (imu.first.has_value() && data.previous_imu_last_us.has_value()) {
-                    // previous_imu_last_us has already been updated by imu_bounds;
-                    // derive the row field from the last appended distribution value.
-                    imu_cross_gap = static_cast<std::uint64_t>(data.imu_cross_frame_gap_us.back());
-                }
-            }
+            const auto imu = measure_imu_frame(capture, data);
 
             csv << (data.decoded_frames - 1) << ','
                 << capture.decoded.sequence << ','
@@ -424,10 +414,10 @@ int main(int argc, char** argv) {
                 << optional_u64(ee_interval) << ','
                 << exposure_duration << ','
                 << capture.decoded.timing.imu_samples.size() << ','
-                << valid_imu << ','
+                << imu.valid_count << ','
                 << optional_u64(imu.first) << ','
-                << optional_u64(imu.second) << ','
-                << optional_u64(imu_cross_gap) << ','
+                << optional_u64(imu.last) << ','
+                << optional_u64(imu.cross_frame_gap) << ','
                 << raw_size << ','
                 << bividi::nori::transport_format_name(raw_mode.format) << ','
                 << raw_mode.width << ',' << raw_mode.height << ','
