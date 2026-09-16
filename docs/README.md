@@ -25,6 +25,10 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`characterization/ar0234-qualification-protocol.md`](characterization/ar0234-qualification-protocol.md) — staged physical qualification from 60 s baseline through soak, software recovery, true USB fault testing, and regression comparison
 - [`characterization/qualification-campaign-comparison.md`](characterization/qualification-campaign-comparison.md) — campaign manifests, stage-by-stage regression comparison, provenance deltas, and optional explicit gates
 
+## Calibration
+
+- [`calibration/inertial-camera-imu.md`](calibration/inertial-camera-imu.md) — #47 IMU and camera↔IMU artifact semantics, SI units, frame/time-offset conventions, validation, and Kalibr adapter mapping
+
 ## Research / interoperability
 
 - [`research/host-ai-interface-standards.md`](research/host-ai-interface-standards.md) — host/robotics/recording/AI standards audit
