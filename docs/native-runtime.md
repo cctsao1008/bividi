@@ -1,6 +1,6 @@
 # Native Runtime
 
-Status: **C++17/OpenCV runtime foundation, shared capture session, Nori pull-buffer acquisition boundary, and transport normalization implemented — physical AR0234 validation remains under Issue #35**
+Status: **C++17/OpenCV runtime foundation and the first end-to-end Nori live-session path are implemented — physical AR0234 validation remains under Issue #35**
 
 Bividi uses a native runtime for camera acquisition and hot image-path work, while Python remains the reference/oracle layer for protocol verification, characterization, and high-level tooling.
 
@@ -60,9 +60,10 @@ nori::RawFrame
   FrameLease
   byte pointer / byte length
   actual VideoMode
-  vendor sequence
+  normalized frame sequence
   host monotonic receive time
   SDK timestamp representation
+  vendor buffer index / offset provenance
        ↓
 normalize_to_bgr24()
        ↓
@@ -70,12 +71,16 @@ nori::NormalizedFrame
   CapturedFrame = top-down BGR24
   source-mode / SDK timing provenance
        ↓
-decxin::Decoder::decode_frame(CapturedFrame)
+nori::DecxinPipeline
+       ↓
+decxin::DecodedFrame
 ```
+
+On Windows the normalized sequence uses the SDK `u_FrameNum`. On Linux it uses `v4l2_buffer.sequence`; the Linux `FRAME_BUFFER_DATA::index` is a buffer-pool index and is preserved separately instead of being misreported as frame sequence.
 
 `RawFrame` allows exactly one outstanding zero-copy vendor buffer in the first bring-up implementation. This mirrors the supplied vendor sample, keeps backpressure deterministic, and prevents accidental exhaustion of the SDK buffer pool while behavior is still being characterized.
 
-The raw-frame lease also retains the private stream implementation. If the public stream object is destroyed while a raw frame is still in use, `VideoStop`, `DeviceVideoUnInit`, and SDK uninitialization are deferred until the final frame lease returns the buffer through `Nori_Xvision_FreeFrameBuff`.
+The raw-frame lease also retains the private stream implementation. If the public stream object is destroyed while a raw frame is still in use, SDK teardown is deferred until the final frame lease returns the buffer through `Nori_Xvision_FreeFrameBuff`.
 
 ### Transport normalization
 
@@ -83,7 +88,8 @@ The OpenCV-backed normalization layer is hardware-independent and does not requi
 
 Current behavior:
 
-- top-down BGR24 can remain zero-copy;
+- top-down BGR24 can remain zero-copy for synchronous bring-up;
+- asynchronous consumers can request owned output so a retained preview never pins a vendor buffer;
 - Windows-style bottom-up BGR24 is vertically normalized;
 - YUYV/YUY2 is converted explicitly to BGR24;
 - MJPEG is decoded explicitly and must match the advertised image geometry;
@@ -102,9 +108,59 @@ The 4000×1200 requirement itself remains owned by the DECXIN device decoder, no
 
 ## Shared capture session
 
-Viewer and web applications no longer own separate synthetic state machines. They consume the same native capture-session model, which carries capture state/counters, FPS, controls, source identity, exposure timing, and IMU-rate status.
+Viewer and web applications consume the same native `CaptureSession` model. The base session carries capture state/counters, FPS, controls, source identity, exposure timing, and IMU-rate status.
 
-The synthetic source remains useful as a hardware-independent implementation of that path. A live source should replace the producer side of the session rather than create another UI-specific pipeline.
+An optional `StereoPreviewFrame` surface exists only for engineering UI preview. It carries camera A/B `ImageView`s plus a `FrameLease`; it is **not** the final sensor-observation schema owned by #11.
+
+Two producers currently implement the session boundary:
+
+```text
+SyntheticCaptureSession
+        ↓
+viewer / web self-tests and hardware-independent development
+
+NoriCaptureSession
+        ↓
+Nori pull buffer
+        ↓
+owned transport normalization
+        ↓
+DECXIN decode
+        ↓
+latest stereo preview + measured status
+        ↓
+viewer / web
+```
+
+`NoriCaptureSession` runs vendor-SDK calls on one private worker thread. UI threads submit low-rate control requests instead of calling the SDK directly. This keeps SDK access serialized and separates presentation concurrency from device I/O.
+
+The live session currently reports:
+
+- measured acquisition FPS;
+- frames, drops, duplicates, and out-of-order sequence events;
+- embedded DECXIN exposure start/end timestamps;
+- IMU sample cadence estimated from decoded IMU timestamps;
+- configured/read-back shutter and gain controls;
+- trigger mode;
+- reconnect/error state;
+- latest camera A/B preview frame.
+
+Configured shutter (`exposure_us`) remains separate from the embedded `EE - ES` timing interval. Control state must not be silently replaced by a measured timestamp-derived duration.
+
+## Nori control boundary
+
+The optional Nori backend normalizes the following vendor controls behind the session/stream boundary:
+
+```text
+start / stop video
+trigger mode
+sensor shutter (microseconds)
+sensor gain multiplier
+```
+
+Windows and Linux require different vendor calls to force manual exposure before shutter/gain changes; those platform details remain inside `nori_stream.cpp`.
+
+Changing to software, hardware, or command trigger mode does not manufacture a trigger source. Software-trigger frequency and command-trigger pulse/action semantics remain explicit live-hardware follow-up work. A mode can therefore legitimately stop producing frames until the corresponding trigger source is configured or exercised.
 
 ## Why C++ + OpenCV
 
@@ -167,10 +223,11 @@ Those remain runtime-discovered device capabilities.
 2. Preserve buffer stride and ownership explicitly.
 3. Prefer views/ROIs over duplication where the transport is already usable.
 4. Accept an explicit correctness-first normalization copy when compressed/oriented transport requires it.
-5. Keep vendor packet decoding deterministic and small.
-6. Profile live hardware before adding GPU/CUDA or more languages.
-7. Keep platform/vendor APIs outside the Bividi core contract.
-8. Keep UI code outside core and backend implementations.
+5. For asynchronous UI/session retention, prefer owned normalized output over pinning the vendor buffer pool.
+6. Keep vendor packet decoding deterministic and small.
+7. Profile live hardware before adding GPU/CUDA or more languages.
+8. Keep platform/vendor APIs outside the Bividi core contract.
+9. Keep UI code outside core and backend implementations.
 
 ## Current native targets
 
@@ -181,10 +238,13 @@ Those remain runtime-discovered device capabilities.
 : optional OpenCV `ImageView` bridge.
 
 `bividi_nori_opencv`
-: optional, hardware-independent MJPEG/YUYV/BGR24 → top-down BGR24 normalization layer.
+: optional, hardware-independent MJPEG/YUYV/BGR24 → top-down BGR24 normalization plus Nori→DECXIN pipeline.
 
 `bividi_nori`
-: optional vendor-SDK probe and pull-buffer stream backend, built only with `BIVIDI_WITH_NORI_SDK=ON` and a supplied SDK root/library.
+: optional vendor-SDK probe, pull-buffer stream, and normalized control backend, built only with `BIVIDI_WITH_NORI_SDK=ON` and a supplied SDK root/library.
+
+`bividi_nori_session`
+: optional live `CaptureSession` producer joining the Nori stream, owned normalization, DECXIN decoder, continuity accounting, controls, and preview publication.
 
 `bividi-nori-probe`
 : enumerates Nori devices, identity/version information, and advertised video modes.
@@ -192,10 +252,13 @@ Those remain runtime-discovered device capabilities.
 `bividi-nori-grab`
 : minimal pull-buffer bring-up CLI that starts a selected mode and reports raw frame sequence, byte length, host receive time, SDK timestamp representation, and actual returned format.
 
-`bividi-viewer` / `bividi-web`
-: engineering UIs using the shared session model. Their current producer is synthetic; the next live slice connects the Nori-normalized DECXIN path to that same session.
+`bividi-nori-decode`
+: brings one or more live Nori transport frames through normalization and the DECXIN decoder and reports camera/timing/IMU results.
 
-Hardware-independent tests cover DECXIN decoding/rollover, buffer lifetime, shared session behavior, the generic OpenCV bridge, Nori transport normalization, and viewer/web self-tests.
+`bividi-viewer` / `bividi-web`
+: engineering UIs using the shared session model. They default to the synthetic producer and can select the Nori producer at runtime when the SDK backend is compiled in.
+
+Hardware-independent tests cover DECXIN decoding/rollover, buffer lifetime, shared session behavior, the generic OpenCV bridge, Nori transport normalization, Nori→DECXIN decoding, and viewer/web self-tests.
 
 ## Build
 
@@ -227,38 +290,42 @@ cmake -S . -B build-nori \
 cmake --build build-nori
 ```
 
-The normal repository CI intentionally does not require vendor binaries or physical hardware.
+The normal repository CI intentionally does not require proprietary vendor binaries or physical hardware.
 
 ## Continuous validation
 
-`.github/workflows/native.yml` validates the native path on every push to `main` and on pull requests:
+`.github/workflows/native.yml` validates the dependency-independent path on every push to `main` and on pull requests:
 
 ```text
 Ubuntu   → C++17 core build + tests
 Windows  → C++17 core build + tests
 Ubuntu + libopencv-dev
          → core + OpenCV bridge + Nori transport normalization
-           + viewer/web build/tests
+           + Nori→DECXIN pipeline + viewer/web build/tests
 ```
 
-The OpenCV job exercises MJPEG decode, YUYV conversion, bottom-up BGR24 normalization, malformed transport rejection, and the viewer/web self-tests without a camera.
+The OpenCV job exercises MJPEG decode, YUYV conversion, bottom-up BGR24 normalization, malformed transport rejection, the DECXIN golden path, and viewer/web self-tests without a camera.
 
-## Next live vertical slice
+Vendor-enabled compilation has additionally been checked against the supplied SDK API surface during development, but normal public CI does not redistribute or require that proprietary SDK. Physical runtime validation remains mandatory.
 
-The remaining connection is deliberately narrow:
+## Remaining Issue #35 work
+
+The software vertical slice now reaches the engineering front ends:
 
 ```text
-nori::Stream::next_frame()
-        ↓
-normalize_to_bgr24()
-        ↓
-decxin::Decoder::decode_frame(CapturedFrame)
-        ↓
-shared CaptureSession
-        ↓
-viewer / web / calibration capture
+Nori SDK
+   ↓
+nori::Stream
+   ↓
+normalize_to_bgr24(own_output)
+   ↓
+nori::DecxinPipeline
+   ↓
+NoriCaptureSession
+   ↓
+viewer / web
 ```
 
-Physical hardware must still establish the real mode index, actual transport choice, camera A/B physical orientation, live timestamp behavior, frame continuity, trigger support, reconnect behavior, sustained throughput, and memory stability before Issue #35 can be closed.
+What remains is evidence from the delivered physical AR0234 unit: real mode index/transport choice, camera A/B physical orientation, live timestamp semantics, sustained FPS/jitter, sequence continuity, trigger behavior, disconnect/reconnect recovery, long-run memory stability, and exact optics/firmware behavior. Those measurements, not the existence of the software path alone, determine when #35 can close.
 
-Related: #35, #38, #40, #41.
+Related: #35, #38, #40, #41, #42.
