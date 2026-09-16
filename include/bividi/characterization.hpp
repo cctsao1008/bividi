@@ -28,7 +28,8 @@ struct DistributionSummary {
 // percentile inputs forever.
 class BoundedSampleSeries {
 public:
-    explicit BoundedSampleSeries(std::size_t capacity = 65536);
+    BoundedSampleSeries();
+    explicit BoundedSampleSeries(std::size_t capacity);
 
     void push_back(double value);
 
