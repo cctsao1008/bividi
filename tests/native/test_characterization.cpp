@@ -15,6 +15,7 @@ bool near(double a, double b, double eps = 1e-9) {
 }  // namespace
 
 int main() {
+    using bividi::characterization::BoundedSampleSeries;
     using bividi::characterization::SequenceSummary;
     using bividi::characterization::SequenceTracker;
     using bividi::characterization::add_sequence_summary;
@@ -41,6 +42,18 @@ int main() {
         assert(near(s.maximum, 20.0));
         assert(near(s.mean, 15.0));
         assert(near(s.p50, 15.0));
+    }
+
+    {
+        BoundedSampleSeries samples(4);
+        for (int i = 0; i < 20; ++i) samples.push_back(static_cast<double>(i));
+        assert(samples.seen_count() == 20);
+        assert(samples.size() <= 4);
+        assert(samples.sample_stride() >= 2);
+        const auto& retained = samples.values();
+        for (std::size_t i = 1; i < retained.size(); ++i) {
+            assert(retained[i] > retained[i - 1]);
+        }
     }
 
     {
