@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/imu-calibration-v1.schema.json",
+  "title": "Bividi IMU calibration artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "calibration_id", "created_utc", "device", "imu", "frames", "provenance"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.imu.v1"},
+    "calibration_id": {"type": "string", "minLength": 1},
+    "created_utc": {"type": "string", "format": "date-time"},
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "serial"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "serial": {"type": "string", "minLength": 1},
+        "firmware": {"type": "string"},
+        "sdk_version": {"type": "string"}
+      }
+    },
+    "imu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "frame"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "frame": {"type": "string", "minLength": 1},
+        "sample_rate_hz_nominal": {"type": "number", "exclusiveMinimum": 0},
+        "sample_rate_hz_measured": {"type": "number", "exclusiveMinimum": 0},
+        "accelerometer_range_g": {"type": "number", "exclusiveMinimum": 0},
+        "gyroscope_range_dps": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "frames": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handedness", "imu_axes"],
+      "properties": {
+        "handedness": {"const": "right"},
+        "imu_axes": {"type": "string", "minLength": 1}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timestamp_unit": {"const": "us"},
+        "timestamp_counter_bits": {"type": "integer", "minimum": 1},
+        "effective_rate_hz": {"type": "number", "exclusiveMinimum": 0},
+        "gap_count": {"type": "integer", "minimum": 0},
+        "duplicate_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "stationary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sample_count": {"type": "integer", "minimum": 1},
+        "duration_s": {"type": "number", "exclusiveMinimum": 0},
+        "gyroscope_bias_rad_s": {"$ref": "#/$defs/vector3"},
+        "gyroscope_stddev_rad_s": {"$ref": "#/$defs/nonnegativeVector3"},
+        "accelerometer_mean_m_s2": {"$ref": "#/$defs/vector3"},
+        "accelerometer_stddev_m_s2": {"$ref": "#/$defs/nonnegativeVector3"}
+      }
+    },
+    "noise": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gyroscope_noise_density_rad_s_sqrt_hz": {"type": "number", "exclusiveMinimum": 0},
+        "accelerometer_noise_density_m_s2_sqrt_hz": {"type": "number", "exclusiveMinimum": 0},
+        "gyroscope_bias_random_walk_rad_s2_sqrt_hz": {"type": "number", "exclusiveMinimum": 0},
+        "accelerometer_bias_random_walk_m_s3_sqrt_hz": {"type": "number", "exclusiveMinimum": 0},
+        "method": {"type": "string", "minLength": 1}
+      }
+    },
+    "scale_misalignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accelerometer_matrix": {"$ref": "#/$defs/matrix3"},
+        "gyroscope_matrix": {"$ref": "#/$defs/matrix3"},
+        "method": {"type": "string", "minLength": 1}
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "warnings": {"type": "array", "items": {"type": "string"}},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "tool"],
+      "properties": {
+        "kind": {"enum": ["synthetic", "measured", "imported"]},
+        "tool": {"type": "string", "minLength": 1},
+        "tool_version": {"type": "string"},
+        "tool_revision": {"type": "string"},
+        "source_session": {"type": "string"},
+        "source_hash": {"type": "string"},
+        "external_backend": {"type": "string"},
+        "external_backend_revision": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"type": "number"}
+    },
+    "nonnegativeVector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"type": "number", "minimum": 0}
+    },
+    "matrix3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {"type": "number"}
+      }
+    }
+  }
+}
