@@ -52,6 +52,27 @@ std::uint64_t monotonic_now_ns() noexcept {
             .count());
 }
 
+E_TRIGGER_MODE vendor_trigger_mode(TriggerMode mode) {
+    switch (mode) {
+        case TriggerMode::free_run: return NON_TRIIGER_MODE;
+        case TriggerMode::software: return SOFTWARE_TRIIGER_MODE;
+        case TriggerMode::hardware: return HARDWARE_TRIGGER_MODE;
+        case TriggerMode::command: return COMMAND_TRIGGER_MODE;
+    }
+    return NON_TRIIGER_MODE;
+}
+
+TriggerMode normalized_trigger_mode(E_TRIGGER_MODE mode) noexcept {
+    switch (mode) {
+        case SOFTWARE_TRIIGER_MODE: return TriggerMode::software;
+        case HARDWARE_TRIGGER_MODE: return TriggerMode::hardware;
+        case COMMAND_TRIGGER_MODE: return TriggerMode::command;
+        case NON_TRIIGER_MODE:
+        default:
+            return TriggerMode::free_run;
+    }
+}
+
 #ifdef _WIN32
 using VendorFrame = FRAME_BUFFER_OUT;
 #else
@@ -105,8 +126,7 @@ struct Stream::Impl {
                     Nori_Xvision_SetTriggerMode(config.device_index, NON_TRIIGER_MODE));
             }
 
-            check("Nori_Xvision_VideoStart", Nori_Xvision_VideoStart(config.device_index));
-            video_started = true;
+            start_video();
         } catch (...) {
             cleanup();
             throw;
@@ -132,6 +152,124 @@ struct Stream::Impl {
         }
     }
 
+    void start_video() {
+        if (video_started) return;
+        if (!video_initialized) {
+            throw Error("Nori video device is not initialized");
+        }
+        check("Nori_Xvision_VideoStart", Nori_Xvision_VideoStart(config.device_index));
+        video_started = true;
+    }
+
+    void stop_video() {
+        if (!video_started) return;
+        if (outstanding.load(std::memory_order_acquire) != 0) {
+            throw Error("cannot stop Nori video while a raw frame is still leased");
+        }
+        check("Nori_Xvision_VideoStop", Nori_Xvision_VideoStop(config.device_index));
+        video_started = false;
+    }
+
+    void ensure_manual_exposure() {
+#ifdef _WIN32
+        long value = 0;
+        long flags = 0;
+        long step = 0;
+        long minimum = 0;
+        long maximum = 0;
+        long default_value = 0;
+        long caps_flags = 0;
+        check(
+            "Nori_Xvision_GetCameraTerminalControl(CameraControl_Exposure)",
+            Nori_Xvision_GetCameraTerminalControl(
+                config.device_index,
+                CameraControl_Exposure,
+                &value,
+                &flags,
+                &step,
+                &minimum,
+                &maximum,
+                &default_value,
+                &caps_flags));
+        if (flags != CameraControl_Flags_Manual) {
+            check(
+                "Nori_Xvision_SetCameraTerminalControl(CameraControl_Exposure)",
+                Nori_Xvision_SetCameraTerminalControl(
+                    config.device_index,
+                    CameraControl_Exposure,
+                    value,
+                    CameraControl_Flags_Manual));
+        }
+#else
+        std::int32_t current = 0;
+        std::int32_t flags = 0;
+        std::int32_t step = 0;
+        std::int32_t minimum = 0;
+        std::int32_t maximum = 0;
+        std::int32_t default_value = 0;
+        check(
+            "Nori_Xvision_GetProcessingUnitControl(V4L2_CID_EXPOSURE_AUTO)",
+            Nori_Xvision_GetProcessingUnitControl(
+                config.device_index,
+                V4L2_CID_EXPOSURE_AUTO,
+                &current,
+                &flags,
+                &step,
+                &minimum,
+                &maximum,
+                &default_value));
+        if (current != V4L2_EXPOSURE_MANUAL) {
+            check(
+                "Nori_Xvision_SetProcessingUnitControl(V4L2_CID_EXPOSURE_AUTO)",
+                Nori_Xvision_SetProcessingUnitControl(
+                    config.device_index,
+                    V4L2_CID_EXPOSURE_AUTO,
+                    V4L2_EXPOSURE_MANUAL));
+        }
+#endif
+    }
+
+    TriggerMode trigger_mode() const {
+        E_TRIGGER_MODE mode = NON_TRIIGER_MODE;
+        check("Nori_Xvision_GetTriggerMode", Nori_Xvision_GetTriggerMode(config.device_index, &mode));
+        return normalized_trigger_mode(mode);
+    }
+
+    void set_trigger_mode(TriggerMode mode) {
+        check(
+            "Nori_Xvision_SetTriggerMode",
+            Nori_Xvision_SetTriggerMode(config.device_index, vendor_trigger_mode(mode)));
+    }
+
+    std::uint32_t exposure_us() const {
+        std::uint32_t value = 0;
+        check("Nori_Xvision_GetSensorShutter", Nori_Xvision_GetSensorShutter(config.device_index, &value));
+        return value;
+    }
+
+    void set_exposure_us(std::uint32_t value) {
+        ensure_manual_exposure();
+        check("Nori_Xvision_SetSensorShutter", Nori_Xvision_SetSensorShutter(config.device_index, value));
+    }
+
+    SensorGainInfo gain_info() const {
+        SensorGainInfo info{};
+        check(
+            "Nori_Xvision_GetSensorGain",
+            Nori_Xvision_GetSensorGain(
+                config.device_index,
+                &info.current,
+                &info.minimum,
+                &info.maximum,
+                &info.step));
+        return info;
+    }
+
+    void set_gain_multiplier(std::uint32_t value) {
+        ensure_manual_exposure();
+        check("Nori_Xvision_SetSensorGain", Nori_Xvision_SetSensorGain(config.device_index, value));
+    }
+
     void release_frame(VendorFrame* frame) noexcept {
         if (frame != nullptr) {
             last_release_error.store(
@@ -142,6 +280,10 @@ struct Stream::Impl {
     }
 
     [[nodiscard]] RawFrame next_frame(const std::shared_ptr<Impl>& keep_alive) {
+        if (!video_started) {
+            throw Error("Nori video stream is stopped");
+        }
+
         const auto previous_release = last_release_error.exchange(NORI_OK, std::memory_order_acq_rel);
         if (previous_release != NORI_OK) {
             fail("Nori_Xvision_FreeFrameBuff", previous_release);
@@ -247,6 +389,50 @@ VideoMode Stream::mode() const {
 
 std::uint32_t Stream::device_index() const noexcept {
     return impl_ ? impl_->config.device_index : 0;
+}
+
+bool Stream::running() const noexcept {
+    return impl_ && impl_->video_started;
+}
+
+void Stream::start_video() {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    impl_->start_video();
+}
+
+void Stream::stop_video() {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    impl_->stop_video();
+}
+
+TriggerMode Stream::trigger_mode() const {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    return impl_->trigger_mode();
+}
+
+void Stream::set_trigger_mode(TriggerMode mode) {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    impl_->set_trigger_mode(mode);
+}
+
+std::uint32_t Stream::exposure_us() const {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    return impl_->exposure_us();
+}
+
+void Stream::set_exposure_us(std::uint32_t value) {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    impl_->set_exposure_us(value);
+}
+
+SensorGainInfo Stream::gain_info() const {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    return impl_->gain_info();
+}
+
+void Stream::set_gain_multiplier(std::uint32_t value) {
+    if (!impl_) throw Error("Nori stream is not initialized");
+    impl_->set_gain_multiplier(value);
 }
 
 }  // namespace bividi::nori
