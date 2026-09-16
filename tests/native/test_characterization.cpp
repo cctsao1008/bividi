@@ -15,7 +15,11 @@ bool near(double a, double b, double eps = 1e-9) {
 }  // namespace
 
 int main() {
+    using bividi::characterization::SequenceSummary;
     using bividi::characterization::SequenceTracker;
+    using bividi::characterization::add_sequence_summary;
+    using bividi::characterization::linear_trend;
+    using bividi::characterization::process_resident_set_bytes;
     using bividi::characterization::summarize;
 
     {
@@ -37,6 +41,23 @@ int main() {
         assert(near(s.maximum, 20.0));
         assert(near(s.mean, 15.0));
         assert(near(s.p50, 15.0));
+    }
+
+    {
+        const auto t = linear_trend({0.0, 1.0, 2.0, 3.0}, {100.0, 110.0, 120.0, 130.0});
+        assert(t.count == 4);
+        assert(near(t.slope_per_second, 10.0));
+        assert(near(t.intercept, 100.0));
+        assert(near(t.r_squared, 1.0));
+    }
+
+    {
+        const auto nan = std::numeric_limits<double>::quiet_NaN();
+        const auto t = linear_trend({0.0, 1.0, 2.0}, {10.0, nan, 14.0});
+        assert(t.count == 2);
+        assert(near(t.slope_per_second, 2.0));
+        assert(near(t.intercept, 10.0));
+        assert(near(t.r_squared, 1.0));
     }
 
     {
@@ -66,6 +87,25 @@ int main() {
         assert(s.out_of_order == 0);
         assert(s.wraps == 1);
     }
+
+    {
+        SequenceSummary total{};
+        add_sequence_summary(total, SequenceSummary{10, 2, 1, 0, 1});
+        add_sequence_summary(total, SequenceSummary{5, 1, 0, 2, 0});
+        assert(total.observations == 15);
+        assert(total.drops == 3);
+        assert(total.duplicates == 1);
+        assert(total.out_of_order == 2);
+        assert(total.wraps == 1);
+    }
+
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
+    {
+        const auto rss = process_resident_set_bytes();
+        assert(rss.has_value());
+        assert(*rss > 0);
+    }
+#endif
 
     std::cout << "bividi characterization test: PASS\n";
     return 0;
