@@ -17,6 +17,7 @@ set(BIVIDI_NORI_LIBRARY "" CACHE FILEPATH "Optional explicit path to the Nori_Xv
 find_package(Threads REQUIRED)
 
 add_library(bividi_core STATIC
+    src/native/characterization.cpp
     src/native/decxin.cpp
     src/native/session.cpp
 )
@@ -128,7 +129,12 @@ if(BIVIDI_WITH_NORI_SDK AND TARGET bividi_nori AND TARGET bividi_nori_opencv)
     add_executable(bividi-nori-decode apps/bividi_nori_decode.cpp)
     target_link_libraries(bividi-nori-decode PRIVATE bividi_nori bividi_nori_opencv)
     target_compile_features(bividi-nori-decode PRIVATE cxx_std_17)
-    message(STATUS "Bividi Nori live DECXIN decode/session surface enabled")
+
+    add_executable(bividi-nori-characterize apps/bividi_nori_characterize.cpp)
+    target_link_libraries(bividi-nori-characterize PRIVATE bividi_nori bividi_nori_opencv)
+    target_compile_features(bividi-nori-characterize PRIVATE cxx_std_17)
+
+    message(STATUS "Bividi Nori live DECXIN decode/session/characterization surface enabled")
 endif()
 
 if(BIVIDI_BUILD_VIEWER)
@@ -183,6 +189,10 @@ if(BIVIDI_BUILD_TESTS)
     add_executable(bividi_session_tests tests/native/test_session.cpp)
     target_link_libraries(bividi_session_tests PRIVATE bividi_core)
     add_test(NAME bividi_session_tests COMMAND bividi_session_tests)
+
+    add_executable(bividi_characterization_tests tests/native/test_characterization.cpp)
+    target_link_libraries(bividi_characterization_tests PRIVATE bividi_core)
+    add_test(NAME bividi_characterization_tests COMMAND bividi_characterization_tests)
 
     if(TARGET bividi_opencv)
         add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
