@@ -134,7 +134,11 @@ if(BIVIDI_WITH_NORI_SDK AND TARGET bividi_nori AND TARGET bividi_nori_opencv)
     target_link_libraries(bividi-nori-characterize PRIVATE bividi_nori bividi_nori_opencv)
     target_compile_features(bividi-nori-characterize PRIVATE cxx_std_17)
 
-    message(STATUS "Bividi Nori live DECXIN decode/session/characterization surface enabled")
+    add_executable(bividi-nori-imu-record apps/bividi_nori_imu_record.cpp)
+    target_link_libraries(bividi-nori-imu-record PRIVATE bividi_nori bividi_nori_opencv)
+    target_compile_features(bividi-nori-imu-record PRIVATE cxx_std_17)
+
+    message(STATUS "Bividi Nori live DECXIN decode/session/characterization/IMU-record surface enabled")
 endif()
 
 if(BIVIDI_BUILD_VIEWER)
@@ -194,13 +198,17 @@ if(BIVIDI_BUILD_TESTS)
     target_link_libraries(bividi_characterization_tests PRIVATE bividi_core)
     add_test(NAME bividi_characterization_tests COMMAND bividi_characterization_tests)
 
-    # The live characterizer only links when the vendor SDK + OpenCV path is
-    # enabled, but its translation unit deliberately depends only on Bividi
-    # public declarations. Compile it everywhere so normal CI catches C++/API
-    # drift without requiring vendor binaries or physical hardware.
+    # Live vendor-facing apps only link when the SDK path is enabled, but these
+    # translation units deliberately depend on Bividi public declarations.
+    # Compile them everywhere so normal CI catches cross-platform C++/API drift
+    # without requiring proprietary binaries or physical hardware.
     add_library(bividi_nori_characterize_compilecheck OBJECT apps/bividi_nori_characterize.cpp)
     target_include_directories(bividi_nori_characterize_compilecheck PRIVATE include)
     target_compile_features(bividi_nori_characterize_compilecheck PRIVATE cxx_std_17)
+
+    add_library(bividi_nori_imu_record_compilecheck OBJECT apps/bividi_nori_imu_record.cpp)
+    target_include_directories(bividi_nori_imu_record_compilecheck PRIVATE include)
+    target_compile_features(bividi_nori_imu_record_compilecheck PRIVATE cxx_std_17)
 
     if(TARGET bividi_opencv)
         add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
