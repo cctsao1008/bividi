@@ -19,6 +19,10 @@ int main() {
     assert(status.trigger_mode == bividi::TriggerMode::free_run);
     assert(status.imu_rate_hz == 600);
 
+    bividi::StereoPreviewFrame preview;
+    assert(!session.latest_stereo_preview(preview));
+    assert(!preview.valid());
+
     const auto paused_at = status.capture.frames;
     assert(session.toggle_capture());
     status = session.snapshot();
