@@ -77,6 +77,13 @@ def resolve_artifact(manifest_path: Path, raw: Any) -> Path | None:
     return path
 
 
+def campaign_identity(manifest: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "campaign_id": manifest.get("campaign_id"),
+        "created_utc": manifest.get("created_utc"),
+    }
+
+
 def campaign_provenance(manifest: dict[str, Any]) -> dict[str, Any]:
     host = manifest.get("host") if isinstance(manifest.get("host"), dict) else {}
     repository = (
@@ -86,8 +93,6 @@ def campaign_provenance(manifest: dict[str, Any]) -> dict[str, Any]:
         manifest.get("selection") if isinstance(manifest.get("selection"), dict) else {}
     )
     return {
-        "campaign_id": manifest.get("campaign_id"),
-        "created_utc": manifest.get("created_utc"),
         "git_revision": repository.get("git_revision"),
         "hostname": host.get("hostname"),
         "platform": host.get("platform"),
@@ -216,21 +221,13 @@ def compare_campaigns(
         if before != after:
             provenance_changes[key] = {"baseline": before, "candidate": after}
 
-    # Campaign host/revision changes are evidence, not automatic failures.
-    if provenance_changes:
-        findings.append(Finding(
-            "warn",
-            "campaign_provenance_changed",
-            "campaign provenance differs; interpret stage deltas with the recorded host/revision changes",
-        ))
-        if overall == "pass":
-            overall = "warn"
-
     return {
         "schema": REPORT_SCHEMA,
         "verdict": overall,
         "baseline_manifest": str(baseline_path),
         "candidate_manifest": str(candidate_path),
+        "baseline_identity": campaign_identity(baseline),
+        "candidate_identity": campaign_identity(candidate),
         "baseline_provenance": baseline_provenance,
         "candidate_provenance": candidate_provenance,
         "provenance_changes": provenance_changes,
@@ -241,7 +238,8 @@ def compare_campaigns(
             "allow_mode_change": allow_mode_change,
             "note": (
                 "Per-stage numeric gates are delegated to compare_nori_characterization; "
-                "no additional campaign-level performance limit is invented."
+                "campaign provenance changes are informational context and do not change the verdict. "
+                "No additional campaign-level performance limit is invented."
             ),
             "max_fps_drop_pct": max_fps_drop_pct,
             "max_host_p99_increase_pct": max_host_p99_increase_pct,
@@ -274,7 +272,7 @@ def render_markdown(report: dict[str, Any]) -> str:
 
     lines += ["", "## Campaign findings", ""]
     if not report["findings"]:
-        lines.append("No campaign-level structural/provenance finding was detected.")
+        lines.append("No campaign-level structural finding was detected.")
     else:
         for item in report["findings"]:
             lines.append(f"- **{item['severity'].upper()}** `{item['code']}` — {item['message']}")
@@ -283,6 +281,8 @@ def render_markdown(report: dict[str, Any]) -> str:
     if not report["provenance_changes"]:
         lines.append("No tracked campaign provenance field changed.")
     else:
+        lines.append("These are informational context and do not by themselves change the verdict.")
+        lines.append("")
         for key, values in sorted(report["provenance_changes"].items()):
             lines.append(f"- `{key}`: `{values['baseline']}` → `{values['candidate']}`")
 
@@ -328,7 +328,7 @@ def parse_stage_filter(value: str) -> list[str]:
 def sample_manifest(summary_paths: dict[str, Path], *, revision: str = "abc") -> dict[str, Any]:
     return {
         "schema": CAMPAIGN_SCHEMA,
-        "campaign_id": "sample",
+        "campaign_id": f"sample-{revision}",
         "created_utc": "2026-09-16T00:00:00+00:00",
         "host": {
             "hostname": "host",
@@ -360,8 +360,8 @@ def self_test() -> int:
         base_summary.write_text(json.dumps(run_compare.sample_summary()), encoding="utf-8")
         cand_summary.write_text(json.dumps(run_compare.sample_summary()), encoding="utf-8")
 
-        base_manifest = sample_manifest({"q1": base_summary})
-        cand_manifest = sample_manifest({"q1": cand_summary})
+        base_manifest = sample_manifest({"q1": base_summary}, revision="abc")
+        cand_manifest = sample_manifest({"q1": cand_summary}, revision="abc")
         base_path = root / "base_campaign.json"
         cand_path = root / "cand_campaign.json"
         base_path.write_text(json.dumps(base_manifest), encoding="utf-8")
@@ -405,6 +405,7 @@ def self_test() -> int:
         )
         assert report["verdict"] == "warn"
 
+        cand_summary.write_text(json.dumps(run_compare.sample_summary()), encoding="utf-8")
         different_revision = sample_manifest({"q1": cand_summary}, revision="def")
         cand_path.write_text(json.dumps(different_revision), encoding="utf-8")
         report = compare_campaigns(
@@ -422,7 +423,7 @@ def self_test() -> int:
             max_recovery_p95_increase_pct=None,
             max_rss_growth_delta_mib_per_hour=None,
         )
-        assert report["verdict"] == "warn"
+        assert report["verdict"] == "pass"
         assert "git_revision" in report["provenance_changes"]
 
     print("AR0234 qualification campaign comparator self-test: PASS")
