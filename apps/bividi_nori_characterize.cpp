@@ -20,6 +20,7 @@
 
 namespace {
 
+using bividi::characterization::BoundedSampleSeries;
 using bividi::characterization::DistributionSummary;
 using bividi::characterization::LinearTrendSummary;
 using bividi::characterization::SequenceSummary;
@@ -62,16 +63,22 @@ struct RunData {
     std::uint64_t current_decode_error_streak = 0;
     std::uint64_t max_decode_error_streak = 0;
 
-    std::vector<double> host_interval_us;
-    std::vector<double> sdk_interval_us;
-    std::vector<double> es_interval_us;
-    std::vector<double> ee_interval_us;
-    std::vector<double> exposure_duration_us;
-    std::vector<double> imu_interval_us;
-    std::vector<double> imu_cross_frame_gap_us;
-    std::vector<double> imu_valid_samples_per_frame;
-    std::vector<double> raw_bytes;
-    std::vector<double> recovery_latency_ms;
+    // These series are deliberately bounded. The per-frame CSV remains the
+    // lossless trace; in-memory samples exist only to produce convenient
+    // approximate run summaries without manufacturing an RSS growth slope.
+    BoundedSampleSeries host_interval_us;
+    BoundedSampleSeries sdk_interval_us;
+    BoundedSampleSeries es_interval_us;
+    BoundedSampleSeries ee_interval_us;
+    BoundedSampleSeries exposure_duration_us;
+    BoundedSampleSeries imu_interval_us;
+    BoundedSampleSeries imu_cross_frame_gap_us;
+    BoundedSampleSeries imu_valid_samples_per_frame;
+    BoundedSampleSeries raw_bytes;
+    BoundedSampleSeries recovery_latency_ms;
+
+    // RSS samples are low-rate (default 1 Hz) and retain paired timestamps for
+    // regression. They are separate from the high-rate bounded metric series.
     std::vector<double> rss_time_s;
     std::vector<double> rss_bytes;
 
@@ -882,7 +889,17 @@ int main(int argc, char** argv) {
         write_trend(json, rss_trend);
         json << ",\n"
              << "    \"growth_mib_per_hour\": " << rss_growth_mib_per_hour << ",\n"
-             << "    \"note\": \"RSS slope is descriptive evidence, not by itself a memory-leak verdict. Compare long runs and repeated sessions.\"\n"
+             << "    \"note\": \"RSS slope is descriptive evidence, not by itself a memory-leak verdict. High-rate summary telemetry is bounded so the characterizer does not grow linearly just by retaining percentile inputs.\"\n"
+             << "  },\n"
+             << "  \"summary_sampling\": {\n"
+             << "    \"capacity_per_high_rate_metric\": " << data.host_interval_us.capacity() << ",\n"
+             << "    \"host_interval_seen\": " << data.host_interval_us.seen_count() << ",\n"
+             << "    \"host_interval_retained\": " << data.host_interval_us.size() << ",\n"
+             << "    \"host_interval_stride\": " << data.host_interval_us.sample_stride() << ",\n"
+             << "    \"imu_interval_seen\": " << data.imu_interval_us.seen_count() << ",\n"
+             << "    \"imu_interval_retained\": " << data.imu_interval_us.size() << ",\n"
+             << "    \"imu_interval_stride\": " << data.imu_interval_us.sample_stride() << ",\n"
+             << "    \"note\": \"When a high-rate series reaches capacity, retained samples are deterministically decimated across the run. The per-frame CSV remains the lossless evidence source.\"\n"
              << "  },\n"
              << "  \"distributions\": {\n";
 
