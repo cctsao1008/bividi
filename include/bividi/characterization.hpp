@@ -21,6 +21,33 @@ struct DistributionSummary {
 // finite inputs. Empty/all-non-finite input returns a zero-initialized summary.
 [[nodiscard]] DistributionSummary summarize(const std::vector<double>& values);
 
+// Bounded, order-preserving decimated sample series for long-running tools.
+// It pre-reserves a fixed capacity; when full it keeps every second retained
+// sample and doubles the sampling stride. This prevents the characterization
+// process itself from creating a linear RSS slope merely by accumulating
+// percentile inputs forever.
+class BoundedSampleSeries {
+public:
+    explicit BoundedSampleSeries(std::size_t capacity = 65536);
+
+    void push_back(double value);
+
+    [[nodiscard]] std::size_t size() const noexcept { return samples_.size(); }
+    [[nodiscard]] bool empty() const noexcept { return samples_.empty(); }
+    [[nodiscard]] std::uint64_t seen_count() const noexcept { return seen_count_; }
+    [[nodiscard]] std::uint64_t sample_stride() const noexcept { return sample_stride_; }
+    [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
+    [[nodiscard]] const std::vector<double>& values() const noexcept { return samples_; }
+
+    operator const std::vector<double>&() const noexcept { return samples_; }
+
+private:
+    std::size_t capacity_ = 65536;
+    std::uint64_t seen_count_ = 0;
+    std::uint64_t sample_stride_ = 1;
+    std::vector<double> samples_;
+};
+
 struct LinearTrendSummary {
     std::size_t count = 0;
     double slope_per_second = 0.0;
