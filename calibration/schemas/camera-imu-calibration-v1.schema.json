@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/camera-imu-calibration-v1.schema.json",
+  "title": "Bividi camera-IMU calibration artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "calibration_id",
+    "created_utc",
+    "device",
+    "camera_reference",
+    "imu_reference",
+    "transform",
+    "frames",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {"const": "bividi.calibration.camera_imu.v1"},
+    "calibration_id": {"type": "string", "minLength": 1},
+    "created_utc": {"type": "string", "format": "date-time"},
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "serial"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "serial": {"type": "string", "minLength": 1},
+        "firmware": {"type": "string"},
+        "sdk_version": {"type": "string"}
+      }
+    },
+    "camera_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["camera_id", "frame"],
+      "properties": {
+        "camera_id": {"type": "string", "minLength": 1},
+        "frame": {"type": "string", "minLength": 1},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "mode_id": {"type": "string"}
+      }
+    },
+    "imu_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "frame"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "frame": {"type": "string", "minLength": 1},
+        "imu_calibration_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from_frame", "to_frame", "matrix", "translation_unit"],
+      "properties": {
+        "from_frame": {"type": "string", "minLength": 1},
+        "to_frame": {"type": "string", "minLength": 1},
+        "matrix": {"$ref": "#/$defs/matrix4"},
+        "translation_unit": {"const": "m"}
+      }
+    },
+    "time_offset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definition", "camera_time_reference", "offset_s"],
+      "properties": {
+        "definition": {"const": "t_imu_s = t_camera_reference_s + offset_s"},
+        "camera_time_reference": {
+          "enum": ["exposure_start", "exposure_midpoint", "exposure_end", "frame_timestamp"]
+        },
+        "offset_s": {"type": "number"},
+        "method": {"type": "string", "minLength": 1}
+      }
+    },
+    "frames": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handedness", "camera_axes", "imu_axes"],
+      "properties": {
+        "handedness": {"const": "right"},
+        "camera_axes": {"type": "string", "minLength": 1},
+        "imu_axes": {"type": "string", "minLength": 1}
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reprojection_error_px_rms": {"type": "number", "minimum": 0},
+        "time_offset_stddev_s": {"type": "number", "minimum": 0},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "tool"],
+      "properties": {
+        "kind": {"enum": ["synthetic", "measured", "imported"]},
+        "tool": {"type": "string", "minLength": 1},
+        "tool_version": {"type": "string"},
+        "tool_revision": {"type": "string"},
+        "source_session": {"type": "string"},
+        "source_hash": {"type": "string"},
+        "external_backend": {"type": "string"},
+        "external_backend_revision": {"type": "string"},
+        "external_backend_container": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "matrix4": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "array",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": {"type": "number"}
+      }
+    }
+  }
+}
