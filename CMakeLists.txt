@@ -7,9 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(BIVIDI_WITH_OPENCV "Build the OpenCV zero-copy image bridge when OpenCV is available" ON)
+option(BIVIDI_WITH_NORI_SDK "Build the optional DECXIN/Nori vendor-SDK backend surface" OFF)
 option(BIVIDI_BUILD_VIEWER "Build the OpenCV HighGUI engineering viewer when dependencies are available" ON)
 option(BIVIDI_BUILD_WEB "Build the lightweight browser engineering console when dependencies are available" ON)
 option(BIVIDI_BUILD_TESTS "Build hardware-independent native tests" ON)
+set(BIVIDI_NORI_SDK_ROOT "" CACHE PATH "Path to the supplied Nori_Xvision SDK root")
+set(BIVIDI_NORI_LIBRARY "" CACHE FILEPATH "Optional explicit path to the Nori_Xvision vendor library")
 
 find_package(Threads REQUIRED)
 
@@ -20,6 +23,64 @@ add_library(bividi_core STATIC
 target_include_directories(bividi_core PUBLIC include)
 target_link_libraries(bividi_core PUBLIC Threads::Threads)
 target_compile_features(bividi_core PUBLIC cxx_std_17)
+
+if(BIVIDI_WITH_NORI_SDK)
+    if(NOT BIVIDI_NORI_SDK_ROOT)
+        message(FATAL_ERROR "BIVIDI_WITH_NORI_SDK=ON requires BIVIDI_NORI_SDK_ROOT")
+    endif()
+
+    set(_bividi_nori_include "${BIVIDI_NORI_SDK_ROOT}/Includes/Nori_Xvision_API")
+    if(NOT EXISTS "${_bividi_nori_include}/Nori_Xvision_API.h")
+        message(FATAL_ERROR "Nori_Xvision_API.h not found under ${_bividi_nori_include}")
+    endif()
+
+    if(NOT BIVIDI_NORI_LIBRARY)
+        if(WIN32)
+            if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+                set(_bividi_nori_library "${BIVIDI_NORI_SDK_ROOT}/Libraries/win64/Nori_Xvision_API_x64.lib")
+            else()
+                set(_bividi_nori_library "${BIVIDI_NORI_SDK_ROOT}/Libraries/win32/Nori_Xvision_API.lib")
+            endif()
+        elseif(UNIX)
+            string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _bividi_processor)
+            if(_bividi_processor MATCHES "^(x86_64|amd64)$")
+                set(_bividi_nori_arch x64)
+            elseif(_bividi_processor MATCHES "^(x86|i[3-6]86)$")
+                set(_bividi_nori_arch x86)
+            elseif(_bividi_processor MATCHES "^(aarch64|arm64)$")
+                set(_bividi_nori_arch arm64)
+            elseif(_bividi_processor MATCHES "^(arm|armv7|armv7l)$")
+                set(_bividi_nori_arch arm32)
+            else()
+                message(FATAL_ERROR "Unsupported Nori SDK processor '${CMAKE_SYSTEM_PROCESSOR}'; set BIVIDI_NORI_LIBRARY explicitly")
+            endif()
+            set(_bividi_nori_library "${BIVIDI_NORI_SDK_ROOT}/Libraries/${_bividi_nori_arch}/libNori_Xvision_Std.so")
+        else()
+            message(FATAL_ERROR "Nori SDK backend currently supports Windows and Linux")
+        endif()
+    else()
+        set(_bividi_nori_library "${BIVIDI_NORI_LIBRARY}")
+    endif()
+
+    if(NOT EXISTS "${_bividi_nori_library}")
+        message(FATAL_ERROR "Nori vendor library not found: ${_bividi_nori_library}")
+    endif()
+
+    add_library(bividi_nori STATIC
+        src/native/nori_probe.cpp
+    )
+    target_include_directories(bividi_nori
+        PUBLIC include
+        PRIVATE "${_bividi_nori_include}"
+    )
+    target_link_libraries(bividi_nori PUBLIC bividi_core PRIVATE "${_bividi_nori_library}")
+    target_compile_features(bividi_nori PUBLIC cxx_std_17)
+
+    add_executable(bividi-nori-probe apps/bividi_nori_probe.cpp)
+    target_link_libraries(bividi-nori-probe PRIVATE bividi_nori)
+    target_compile_features(bividi-nori-probe PRIVATE cxx_std_17)
+    message(STATUS "Bividi Nori SDK probe enabled: ${_bividi_nori_library}")
+endif()
 
 if(BIVIDI_WITH_OPENCV)
     find_package(OpenCV QUIET COMPONENTS core)
