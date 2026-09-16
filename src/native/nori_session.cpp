@@ -10,6 +10,7 @@
 #include <optional>
 #include <sstream>
 #include <thread>
+#include <utility>
 
 namespace bividi::nori {
 namespace {
@@ -131,6 +132,7 @@ struct NoriCaptureSession::Impl {
         state.capture.state = CaptureState::error;
         state.fps = 0.0;
         state.last_action = message;
+        latest_preview = {};
     }
 
     void publish_connection(Stream& stream) {
@@ -233,14 +235,12 @@ struct NoriCaptureSession::Impl {
         ++state.capture.frames;
         ++fps_window_frames;
         state.capture.state = CaptureState::running;
+
+        // Keep the configured/read-back shutter in state.exposure_us. Embedded
+        // EE-ES is a measured device timestamp interval and must remain a
+        // separate time-domain observation instead of becoming control state.
         state.exposure_start_us = preview.exposure_start_us;
         state.exposure_end_us = preview.exposure_end_us;
-        if (preview.exposure_end_us >= preview.exposure_start_us) {
-            const auto duration = preview.exposure_end_us - preview.exposure_start_us;
-            if (duration <= static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
-                state.exposure_us = static_cast<int>(duration);
-            }
-        }
         if (preview.imu_rate_hz != 0) state.imu_rate_hz = preview.imu_rate_hz;
         latest_preview = std::move(preview);
 
@@ -271,32 +271,29 @@ struct NoriCaptureSession::Impl {
         DecxinPipeline pipeline(NormalizationOwnership::own_output);
 
         while (true) {
+            bool should_reconnect = false;
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 if (stop) break;
-                if (reconnect_requested && stream) {
+                if (reconnect_requested) {
                     reconnect_requested = false;
+                    should_reconnect = true;
                     state.capture.state = CaptureState::idle;
                     state.fps = 0.0;
-                    state.last_action = "reconnecting Nori stream";
+                    state.last_action = stream ? "reconnecting Nori stream" : "connecting Nori stream";
                     latest_preview = {};
-                    stream.reset();
-                    pipeline.reset_timestamps();
-                    reconnect_requested = true;
                 }
             }
 
+            if (should_reconnect) {
+                // Vendor stop/uninit can block. Never hold the public session
+                // mutex while tearing down the SDK path.
+                stream.reset();
+                pipeline.reset_timestamps();
+            }
+
             if (!stream) {
-                bool should_connect = false;
-                {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    if (stop) break;
-                    if (reconnect_requested) {
-                        reconnect_requested = false;
-                        should_connect = true;
-                    }
-                }
-                if (!should_connect) {
+                if (!should_reconnect) {
                     wait_disconnected();
                     continue;
                 }
