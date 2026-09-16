@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <utility>
 
 namespace bividi::nori {
@@ -30,6 +29,7 @@ NormalizedFrame base_result(const RawFrame& raw) {
     NormalizedFrame result{};
     result.sdk_timestamp = raw.sdk_timestamp;
     result.source_mode = raw.mode;
+    result.vendor_buffer_index = raw.vendor_buffer_index;
     result.vendor_buffer_offset = raw.vendor_buffer_offset;
     result.captured.sequence = raw.sequence;
     result.captured.host_receive_monotonic_ns = raw.host_receive_monotonic_ns;
@@ -44,9 +44,7 @@ void attach_owned_bgr(NormalizedFrame& result, cv::Mat image) {
     auto* storage = new cv::Mat(std::move(image));
     result.captured.lease = FrameLease::adopt(
         storage,
-        [](cv::Mat* owned) noexcept {
-            delete owned;
-        });
+        [](cv::Mat* owned) noexcept { delete owned; });
     result.captured.transport = ImageView{
         storage->data,
         static_cast<std::size_t>(storage->cols),
@@ -59,7 +57,7 @@ void attach_owned_bgr(NormalizedFrame& result, cv::Mat image) {
 
 }  // namespace
 
-NormalizedFrame normalize_to_bgr24(const RawFrame& raw) {
+NormalizedFrame normalize_to_bgr24(const RawFrame& raw, NormalizationOwnership ownership) {
     if (!raw.valid()) {
         throw Error("cannot normalize an invalid Nori raw frame");
     }
@@ -78,7 +76,14 @@ NormalizedFrame normalize_to_bgr24(const RawFrame& raw) {
                 throw Error("Nori BGR24 frame is shorter than its declared geometry");
             }
 
-            if (!raw.mode.bottom_up) {
+            cv::Mat source(
+                height,
+                width,
+                CV_8UC3,
+                const_cast<std::uint8_t*>(raw.data),
+                static_cast<std::size_t>(raw.mode.width) * 3);
+
+            if (!raw.mode.bottom_up && ownership == NormalizationOwnership::borrow_when_possible) {
                 result.captured.lease = raw.lease;
                 result.captured.transport = ImageView{
                     raw.data,
@@ -91,15 +96,13 @@ NormalizedFrame normalize_to_bgr24(const RawFrame& raw) {
                 return result;
             }
 
-            cv::Mat source(
-                height,
-                width,
-                CV_8UC3,
-                const_cast<std::uint8_t*>(raw.data),
-                static_cast<std::size_t>(raw.mode.width) * 3);
-            cv::Mat flipped;
-            cv::flip(source, flipped, 0);
-            attach_owned_bgr(result, std::move(flipped));
+            cv::Mat owned;
+            if (raw.mode.bottom_up) {
+                cv::flip(source, owned, 0);
+            } else {
+                owned = source.clone();
+            }
+            attach_owned_bgr(result, std::move(owned));
             break;
         }
 

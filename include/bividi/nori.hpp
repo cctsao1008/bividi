@@ -70,9 +70,14 @@ struct RawFrame {
     const std::uint8_t* data = nullptr;
     std::size_t size = 0;
     VideoMode mode{};
+
+    // Platform-normalized frame sequence. Windows uses the SDK u_FrameNum;
+    // Linux uses v4l2_buffer.sequence. The Linux FRAME_BUFFER_DATA::index is a
+    // buffer-pool index and is preserved separately below.
     std::uint64_t sequence = 0;
     std::uint64_t host_receive_monotonic_ns = 0;
     SdkFrameTimestamp sdk_timestamp{};
+    std::uint32_t vendor_buffer_index = 0;
     std::uint32_t vendor_buffer_offset = 0;
 
     [[nodiscard]] bool valid() const noexcept {

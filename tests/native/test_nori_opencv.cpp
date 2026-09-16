@@ -19,9 +19,7 @@ bividi::nori::RawFrame make_raw(
     bividi::nori::RawFrame frame{};
     frame.lease = bividi::FrameLease::adopt(
         storage,
-        [](std::vector<std::uint8_t>* owned) noexcept {
-            delete owned;
-        });
+        [](std::vector<std::uint8_t>* owned) noexcept { delete owned; });
     frame.data = storage->data();
     frame.size = storage->size();
     frame.mode = mode;
@@ -30,12 +28,15 @@ bividi::nori::RawFrame make_raw(
     frame.sdk_timestamp.encoding = bividi::nori::SdkTimestampEncoding::seconds_microseconds;
     frame.sdk_timestamp.seconds = 12;
     frame.sdk_timestamp.microseconds = 345;
+    frame.vendor_buffer_index = 3;
+    frame.vendor_buffer_offset = 64;
     return frame;
 }
 
 }  // namespace
 
 int main() {
+    using bividi::nori::NormalizationOwnership;
     using bividi::nori::TransportFormat;
     using bividi::nori::VideoMode;
 
@@ -57,6 +58,25 @@ int main() {
         assert(normalized.captured.lease.use_count() == before + 1);
         assert(normalized.captured.sequence == 7);
         assert(normalized.sdk_timestamp.seconds == 12);
+        assert(normalized.vendor_buffer_index == 3);
+        assert(normalized.vendor_buffer_offset == 64);
+    }
+
+    {
+        VideoMode mode{};
+        mode.width = 2;
+        mode.height = 2;
+        mode.format = TransportFormat::bgr24;
+        mode.bottom_up = false;
+        auto raw = make_raw({1,2,3,4,5,6,7,8,9,10,11,12}, mode);
+        const auto raw_ptr = raw.data;
+        auto normalized = bividi::nori::normalize_to_bgr24(raw, NormalizationOwnership::own_output);
+        assert(normalized.valid());
+        assert(normalized.captured.transport.data != raw_ptr);
+        assert(normalized.captured.transport.data[0] == 1);
+        raw.lease.reset();
+        assert(normalized.captured.lease.valid());
+        assert(normalized.captured.transport.data[11] == 12);
     }
 
     {

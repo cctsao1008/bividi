@@ -201,10 +201,11 @@ struct Stream::Impl {
             static_cast<std::uint64_t>(vendor_frame->Frame_Time.dwLowDateTime);
 #else
         frame.size = vendor_frame->buff_Length;
-        frame.sequence = vendor_frame->index;
+        frame.sequence = vendor_frame->buffer.sequence;
         frame.sdk_timestamp.encoding = SdkTimestampEncoding::seconds_microseconds;
         frame.sdk_timestamp.seconds = vendor_frame->Frame_Time.tv_sec;
         frame.sdk_timestamp.microseconds = vendor_frame->Frame_Time.tv_usec;
+        frame.vendor_buffer_index = vendor_frame->index;
         frame.vendor_buffer_offset = vendor_frame->buff_Offset;
 #endif
         frame.mode = video_mode_from_vendor(vendor_frame->PixFormat);

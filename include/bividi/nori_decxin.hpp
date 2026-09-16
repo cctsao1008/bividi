@@ -14,6 +14,7 @@ struct DecodedCapture {
     decxin::DecodedFrame decoded{};
     SdkFrameTimestamp sdk_timestamp{};
     VideoMode source_mode{};
+    std::uint32_t vendor_buffer_index = 0;
     std::uint32_t vendor_buffer_offset = 0;
 
     [[nodiscard]] bool valid() const noexcept {
@@ -22,13 +23,19 @@ struct DecodedCapture {
 };
 
 // Stateful DECXIN decoder for a Nori source. Timestamp rollover extension is
-// intentionally owned here across consecutive frames.
+// intentionally owned here across consecutive frames. Asynchronous consumers
+// should select own_output so retaining a decoded frame never pins a vendor
+// capture buffer; synchronous bring-up can keep the zero-copy default.
 class DecxinPipeline {
 public:
+    explicit DecxinPipeline(
+        NormalizationOwnership ownership = NormalizationOwnership::borrow_when_possible) noexcept;
+
     void reset_timestamps() noexcept;
     [[nodiscard]] DecodedCapture decode(const RawFrame& raw_frame);
 
 private:
+    NormalizationOwnership ownership_ = NormalizationOwnership::borrow_when_possible;
     decxin::Decoder decoder_;
 };
 
