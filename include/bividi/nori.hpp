@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bividi/capture.hpp"
+#include "bividi/session.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -60,6 +60,13 @@ struct SdkFrameTimestamp {
     std::uint64_t filetime_100ns = 0;
 };
 
+struct SensorGainInfo {
+    std::uint32_t current = 0;
+    std::uint32_t minimum = 0;
+    std::uint32_t maximum = 0;
+    std::uint32_t step = 0;
+};
+
 // Vendor-transport frame borrowed from the Nori SDK pool.
 //
 // This is intentionally below CapturedFrame: MJPEG/YUYV cannot be represented
@@ -104,7 +111,7 @@ public:
 // vendor SDK. Vendor structs remain private to the implementation.
 [[nodiscard]] std::vector<DeviceInfo> probe_devices();
 
-// Minimal zero-copy pull-buffer stream for bring-up.
+// Minimal zero-copy pull-buffer stream for bring-up and live-session use.
 //
 // Exactly one vendor frame may remain leased at a time. This mirrors the
 // supplied grab_image sample and makes ownership/backpressure deterministic.
@@ -123,6 +130,19 @@ public:
     [[nodiscard]] RawFrame next_frame();
     [[nodiscard]] VideoMode mode() const;
     [[nodiscard]] std::uint32_t device_index() const noexcept;
+    [[nodiscard]] bool running() const noexcept;
+
+    void start_video();
+    void stop_video();
+
+    [[nodiscard]] TriggerMode trigger_mode() const;
+    void set_trigger_mode(TriggerMode mode);
+
+    [[nodiscard]] std::uint32_t exposure_us() const;
+    void set_exposure_us(std::uint32_t value);
+
+    [[nodiscard]] SensorGainInfo gain_info() const;
+    void set_gain_multiplier(std::uint32_t value);
 
 private:
     struct Impl;
