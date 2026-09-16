@@ -60,6 +60,9 @@ DistributionSummary summarize(const std::vector<double>& values) {
     return result;
 }
 
+BoundedSampleSeries::BoundedSampleSeries()
+    : BoundedSampleSeries(65536) {}
+
 BoundedSampleSeries::BoundedSampleSeries(std::size_t capacity)
     : capacity_(std::max<std::size_t>(1, capacity)) {
     samples_.reserve(capacity_);
