@@ -35,6 +35,8 @@ jobs:
         run: python tools/analyze_imu_stationary.py --self-test
       - name: Allan deviation noise laboratory self-test
         run: python tools/analyze_imu_allan.py --self-test
+      - name: Six-position IMU axis laboratory self-test
+        run: python tools/analyze_imu_six_position.py --self-test
       - name: Configure
         run: cmake -S . -B build -DBIVIDI_WITH_OPENCV=OFF -DBIVIDI_BUILD_VIEWER=OFF -DBIVIDI_BUILD_WEB=OFF -DBIVIDI_BUILD_TESTS=ON
       - name: Build
