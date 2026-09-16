@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bividi/image_view.hpp"
+#include "bividi/capture.hpp"
 
 #include <array>
 #include <cstdint>
@@ -57,11 +57,23 @@ struct Metadata {
     }
 };
 
-struct Observation {
+// Device-family decode result. This is intentionally not the final public
+// Bividi Observation contract owned by Issue #11.
+//
+// When produced from a CapturedFrame, the lease and host acquisition metadata
+// are carried forward so the camera subviews remain valid without a copy.
+struct DecodedFrame {
+    FrameLease lease{};
     ImageView metadata_region{};
     ImageView camera_a{};
     ImageView camera_b{};
     Metadata timing{};
+    std::uint64_t sequence = 0;
+    std::uint64_t host_receive_monotonic_ns = 0;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return !camera_a.empty() && !camera_b.empty();
+    }
 };
 
 class TimestampExtender32 {
@@ -86,7 +98,8 @@ public:
 
     [[nodiscard]] Metadata decode_payload(const std::vector<std::uint8_t>& payload);
     [[nodiscard]] std::vector<std::uint8_t> extract_payload(const ImageView& bgr24_frame) const;
-    [[nodiscard]] Observation decode_frame(const ImageView& bgr24_frame);
+    [[nodiscard]] DecodedFrame decode_frame(const ImageView& bgr24_frame);
+    [[nodiscard]] DecodedFrame decode_frame(const CapturedFrame& captured_frame);
 
 private:
     TimestampExtender32 exposure_clock_;

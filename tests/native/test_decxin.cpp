@@ -61,8 +61,6 @@ void encode_group_into_row(
     auto* row = storage.data() + row_index * row_stride;
     std::fill(row, row + row_stride, 0xff);
 
-    // Match the vendor decoder geometry: find a dark marker, advance four pixels,
-    // then sample one bit every eight pixels from the green channel.
     constexpr std::size_t marker_x = 8;
     row[marker_x * 3 + 1] = 0;
     constexpr std::size_t first_bit_x = marker_x + bividi::decxin::kCodeCell / 2;
@@ -135,18 +133,72 @@ void test_encoded_frame_path() {
     assert(extracted == payload);
 
     decoder.reset_timestamps();
-    const auto observation = decoder.decode_frame(frame);
-    assert(observation.timing.header.protocol_type == 1);
-    assert(observation.timing.exposure_duration_us() == 7494u);
-    assert(observation.timing.imu_samples.size() == 11u);
+    const auto decoded = decoder.decode_frame(frame);
+    assert(decoded.valid());
+    assert(!decoded.lease.valid());
+    assert(decoded.sequence == 0);
+    assert(decoded.host_receive_monotonic_ns == 0);
+    assert(decoded.timing.header.protocol_type == 1);
+    assert(decoded.timing.exposure_duration_us() == 7494u);
+    assert(decoded.timing.imu_samples.size() == 11u);
 
-    assert(observation.metadata_region.data == storage.data());
-    assert(observation.metadata_region.width == bividi::decxin::kMetadataWidth);
-    assert(observation.camera_a.data == storage.data() + bividi::decxin::kMetadataWidth * 3);
-    assert(observation.camera_b.data ==
+    assert(decoded.metadata_region.data == storage.data());
+    assert(decoded.metadata_region.width == bividi::decxin::kMetadataWidth);
+    assert(decoded.camera_a.data == storage.data() + bividi::decxin::kMetadataWidth * 3);
+    assert(decoded.camera_b.data ==
            storage.data() + (bividi::decxin::kMetadataWidth + bividi::decxin::kCameraWidth) * 3);
-    assert(observation.camera_a.row_stride == stride);
-    assert(observation.camera_b.row_stride == stride);
+    assert(decoded.camera_a.row_stride == stride);
+    assert(decoded.camera_b.row_stride == stride);
+}
+
+void test_captured_frame_preserves_lease_and_host_metadata() {
+    struct OwnedTransport {
+        std::vector<std::uint8_t> pixels;
+    };
+
+    int releases = 0;
+    auto* owner = new OwnedTransport{synthetic_transport_frame(golden_payload())};
+    auto lease = bividi::FrameLease::adopt(
+        owner,
+        [&releases](OwnedTransport* transport) noexcept {
+            ++releases;
+            delete transport;
+        });
+
+    constexpr std::size_t stride = bividi::decxin::kTransportWidth * 3;
+    const bividi::ImageView transport{
+        owner->pixels.data(),
+        bividi::decxin::kTransportWidth,
+        bividi::decxin::kTransportHeight,
+        stride,
+        3,
+        bividi::PixelFormat::bgr24,
+    };
+
+    bividi::CapturedFrame captured{
+        lease,
+        transport,
+        77,
+        987654321,
+    };
+    lease.reset();
+    assert(releases == 0);
+
+    bividi::decxin::Decoder decoder;
+    auto decoded = decoder.decode_frame(captured);
+    assert(decoded.valid());
+    assert(decoded.lease.valid());
+    assert(decoded.sequence == 77);
+    assert(decoded.host_receive_monotonic_ns == 987654321);
+    assert(decoded.camera_a.data == owner->pixels.data() + bividi::decxin::kMetadataWidth * 3);
+    assert(decoded.timing.exposure_duration_us() == 7494u);
+
+    captured.lease.reset();
+    assert(releases == 0);
+    assert(decoded.camera_a.data == owner->pixels.data() + bividi::decxin::kMetadataWidth * 3);
+
+    decoded.lease.reset();
+    assert(releases == 1);
 }
 
 void test_rollover() {
@@ -177,6 +229,7 @@ void test_image_view_is_zero_copy() {
 int main() {
     test_golden_vector();
     test_encoded_frame_path();
+    test_captured_frame_preserves_lease_and_host_metadata();
     test_rollover();
     test_image_view_is_zero_copy();
     std::cout << "bividi native tests: PASS\n";

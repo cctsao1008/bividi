@@ -252,14 +252,26 @@ std::vector<std::uint8_t> Decoder::extract_payload(const ImageView& frame) const
     return payload;
 }
 
-Observation Decoder::decode_frame(const ImageView& frame) {
+DecodedFrame Decoder::decode_frame(const ImageView& frame) {
     const auto payload = extract_payload(frame);
-    Observation observation{};
-    observation.metadata_region = frame.subview(0, kMetadataWidth);
-    observation.camera_a = frame.subview(kMetadataWidth, kCameraWidth);
-    observation.camera_b = frame.subview(kMetadataWidth + kCameraWidth, kCameraWidth);
-    observation.timing = decode_payload(payload);
-    return observation;
+    DecodedFrame decoded{};
+    decoded.metadata_region = frame.subview(0, kMetadataWidth);
+    decoded.camera_a = frame.subview(kMetadataWidth, kCameraWidth);
+    decoded.camera_b = frame.subview(kMetadataWidth + kCameraWidth, kCameraWidth);
+    decoded.timing = decode_payload(payload);
+    return decoded;
+}
+
+DecodedFrame Decoder::decode_frame(const CapturedFrame& captured_frame) {
+    if (!captured_frame.valid()) {
+        throw DecodeError("captured transport frame is empty");
+    }
+
+    auto decoded = decode_frame(captured_frame.transport);
+    decoded.lease = captured_frame.lease;
+    decoded.sequence = captured_frame.sequence;
+    decoded.host_receive_monotonic_ns = captured_frame.host_receive_monotonic_ns;
+    return decoded;
 }
 
 }  // namespace bividi::decxin
