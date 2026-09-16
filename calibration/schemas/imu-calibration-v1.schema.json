@@ -105,7 +105,8 @@
         "source_session": {"type": "string"},
         "source_hash": {"type": "string"},
         "external_backend": {"type": "string"},
-        "external_backend_revision": {"type": "string"}
+        "external_backend_revision": {"type": "string"},
+        "external_backend_container": {"type": "string"}
       }
     }
   },
