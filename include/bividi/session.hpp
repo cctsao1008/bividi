@@ -16,6 +16,24 @@ enum class TriggerMode {
 
 [[nodiscard]] const char* trigger_mode_name(TriggerMode mode) noexcept;
 
+// Engineering/UI stereo preview only. This is deliberately smaller than the
+// final sensor-observation contract owned by Issue #11: it carries two borrowed
+// image views plus the lease and timing needed to display them safely.
+struct StereoPreviewFrame {
+    FrameLease lease{};
+    ImageView camera_a{};
+    ImageView camera_b{};
+    std::uint64_t sequence = 0;
+    std::uint64_t host_receive_monotonic_ns = 0;
+    std::uint64_t exposure_start_us = 0;
+    std::uint64_t exposure_end_us = 0;
+    std::uint32_t imu_rate_hz = 0;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return lease.valid() && !camera_a.empty() && !camera_b.empty();
+    }
+};
+
 // Lightweight engineering/runtime status shared by viewer and web front ends.
 // This is not the final sensor-observation schema owned by Issue #11.
 struct SessionStatus {
@@ -44,6 +62,15 @@ public:
     virtual ~CaptureSession() = default;
 
     [[nodiscard]] virtual SessionStatus snapshot() const = 0;
+
+    // Optional engineering-preview surface. A returned frame keeps its backing
+    // image storage alive through FrameLease and may therefore outlive the
+    // session mutex/producer iteration that published it.
+    [[nodiscard]] virtual bool latest_stereo_preview(StereoPreviewFrame& out) const {
+        out = {};
+        return false;
+    }
+
     virtual bool toggle_capture() = 0;
     virtual bool cycle_trigger() = 0;
     virtual bool reconnect() = 0;
