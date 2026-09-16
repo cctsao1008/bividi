@@ -19,6 +19,8 @@ jobs:
         run: python tools/compare_nori_characterization.py --self-test
       - name: Qualification runner self-test
         run: python tools/run_ar0234_qualification.py --self-test
+      - name: Qualification campaign comparator self-test
+        run: python tools/compare_qualification_campaigns.py --self-test
       - name: Configure
         run: cmake -S . -B build -DBIVIDI_WITH_OPENCV=OFF -DBIVIDI_BUILD_VIEWER=OFF -DBIVIDI_BUILD_WEB=OFF -DBIVIDI_BUILD_TESTS=ON
       - name: Build
