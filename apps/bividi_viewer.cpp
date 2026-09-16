@@ -16,6 +16,7 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -308,6 +309,8 @@ int main(int argc, char** argv) {
     auto initial = session->snapshot();
     int exposure_trackbar = initial.exposure_us > 0 ? initial.exposure_us : 1;
     int gain_trackbar = std::max(0, initial.gain_x10);
+    int last_exposure_request = exposure_trackbar;
+    int last_gain_request = gain_trackbar;
     bool controls_synced = source == "synthetic";
 
     cv::namedWindow(kWindowName, cv::WINDOW_NORMAL);
@@ -325,6 +328,8 @@ int main(int argc, char** argv) {
             gain_trackbar = std::clamp(state.gain_x10, 0, kMaxGainX10);
             cv::setTrackbarPos("Exposure us", kWindowName, exposure_trackbar);
             cv::setTrackbarPos("Gain x0.1", kWindowName, gain_trackbar);
+            last_exposure_request = exposure_trackbar;
+            last_gain_request = gain_trackbar;
             controls_synced = true;
         }
 
@@ -334,13 +339,14 @@ int main(int argc, char** argv) {
                 requested_exposure = 1;
                 cv::setTrackbarPos("Exposure us", kWindowName, requested_exposure);
             }
-            if (requested_exposure != state.exposure_us) {
-                session->set_exposure_us(requested_exposure);
+            if (requested_exposure != last_exposure_request &&
+                session->set_exposure_us(requested_exposure)) {
+                last_exposure_request = requested_exposure;
             }
 
             const int requested_gain = cv::getTrackbarPos("Gain x0.1", kWindowName);
-            if (requested_gain != state.gain_x10) {
-                session->set_gain_x10(requested_gain);
+            if (requested_gain != last_gain_request && session->set_gain_x10(requested_gain)) {
+                last_gain_request = requested_gain;
             }
         }
 
