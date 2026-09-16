@@ -15,6 +15,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+      - name: Characterization comparator self-test
+        run: python tools/compare_nori_characterization.py --self-test
       - name: Configure
         run: cmake -S . -B build -DBIVIDI_WITH_OPENCV=OFF -DBIVIDI_BUILD_VIEWER=OFF -DBIVIDI_BUILD_WEB=OFF -DBIVIDI_BUILD_TESTS=ON
       - name: Build
