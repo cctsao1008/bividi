@@ -18,6 +18,22 @@ schemas/camera-imu-calibration-v1.schema.json
 
 The schemas are intentionally independent of OpenCV, ROS, Kalibr, DECXIN/Nori transport structs, and runtime backend types. External solver formats are adapters, not Bividi's persistent public calibration schema.
 
+## Evidence before artifact promotion
+
+Issue #47 deliberately separates measurement evidence from a promoted calibration artifact. Current hardware-independent tooling includes:
+
+```text
+bividi-nori-imu-record              lossless raw IMU + ES/EE trace
+
+tools/audit_imu_timing.py           device-time cadence / gap / camera↔IMU timing audit
+tools/analyze_imu_stationary.py     stationary raw bias/variance evidence
+tools/analyze_imu_allan.py          long-run Allan/noise characterization
+tools/analyze_imu_six_position.py   six-pose accelerometer axis/sign/scale sanity
+tools/export_kalibr_imu.py          reviewed IMU artifact -> Kalibr imu.yaml adapter
+```
+
+Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model and Allan-derived Kalibr candidates are not automatically written into `bividi.calibration.imu.v1`.
+
 ## Provenance is mandatory
 
 Every artifact must state whether its values are:
@@ -43,6 +59,10 @@ t_imu_s = t_camera_reference_s + offset_s
 ```
 
 `camera_time_reference` must also be named (for example exposure start/end). A bare `time_offset` with an implicit epoch or sign convention is not an acceptable artifact.
+
+For six-position accelerometer work, pose labels use target-frame **specific force**, not an ambiguous gravity-vector sign convention. `+X up` means target +X physically points upward and the expected stationary accelerometer target vector is approximately `[+1, 0, 0] g`.
+
+Static gravity does not establish gyroscope axis permutation/sign. Gyro frame validation requires controlled angular motion rather than copying the accelerometer mapping by assumption.
 
 ## Synthetic examples
 
