@@ -1,15 +1,15 @@
+#include "bividi/session.hpp"
+
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
-#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -41,113 +41,23 @@ namespace {
 constexpr int kPreviewWidth = 640;
 constexpr int kPreviewHeight = 400;
 constexpr int kPreviewFps = 20;
-constexpr int kMaxExposureUs = 20000;
-constexpr int kMaxGainX10 = 240;
 
-const char* trigger_name(int mode) {
-    switch (mode % 4) {
-        case 0: return "Free Run";
-        case 1: return "Software";
-        case 2: return "Hardware";
-        default: return "Command";
-    }
-}
-
-struct Status {
-    bool running = true;
-    std::uint64_t frame_count = 0;
-    std::uint64_t drop_count = 0;
-    int exposure_us = 7500;
-    int gain_x10 = 10;
-    int trigger_mode = 0;
-    std::uint64_t exposure_start_us = 0;
-    std::uint64_t exposure_end_us = 0;
-    std::string last_action = "synthetic source ready";
-};
-
-class SyntheticSession {
-public:
-    SyntheticSession() : ticker_([this] { tick_loop(); }) {}
-
-    ~SyntheticSession() {
-        stop_.store(true);
-        if (ticker_.joinable()) ticker_.join();
-    }
-
-    Status snapshot() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return state_;
-    }
-
-    void toggle_capture() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_.running = !state_.running;
-        state_.last_action = state_.running ? "capture resumed" : "capture paused";
-    }
-
-    void cycle_trigger() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_.trigger_mode = (state_.trigger_mode + 1) % 4;
-        state_.last_action = std::string("trigger mode -> ") + trigger_name(state_.trigger_mode);
-    }
-
-    void reconnect() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_.frame_count = 0;
-        state_.drop_count = 0;
-        state_.exposure_start_us = 0;
-        state_.exposure_end_us = 0;
-        state_.last_action = "synthetic reconnect/reset";
-    }
-
-    void set_exposure(int value) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_.exposure_us = std::clamp(value, 1, kMaxExposureUs);
-        state_.last_action = "exposure updated";
-    }
-
-    void set_gain(int value) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_.gain_x10 = std::clamp(value, 0, kMaxGainX10);
-        state_.last_action = "gain updated";
-    }
-
-private:
-    void tick_loop() {
-        using namespace std::chrono_literals;
-        while (!stop_.load()) {
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                if (state_.running) {
-                    ++state_.frame_count;
-                    constexpr std::uint64_t frame_period_us = 16667;
-                    state_.exposure_start_us = state_.frame_count * frame_period_us;
-                    state_.exposure_end_us = state_.exposure_start_us + static_cast<std::uint64_t>(state_.exposure_us);
-                }
-            }
-            std::this_thread::sleep_for(16ms);
-        }
-    }
-
-    mutable std::mutex mutex_;
-    Status state_{};
-    std::atomic<bool> stop_{false};
-    std::thread ticker_;
-};
-
-cv::Mat render_camera(const Status& state, bool camera_b) {
+cv::Mat render_camera(const bividi::SessionStatus& state, bool camera_b) {
     cv::Mat image(kPreviewHeight, kPreviewWidth, CV_8UC3, cv::Scalar(27, 30, 35));
     const int disparity = camera_b ? -26 : 26;
     const int direction = camera_b ? -1 : 1;
-    const int x = static_cast<int>((state.frame_count * 5) % (kPreviewWidth - 180)) + 90 + disparity;
-    const int y = kPreviewHeight / 2 + static_cast<int>(60.0 * std::sin(state.frame_count * 0.055));
+    const int x = static_cast<int>((state.capture.frames * 5) % (kPreviewWidth - 180)) + 90 + disparity;
+    const int y = kPreviewHeight / 2 + static_cast<int>(60.0 * std::sin(state.capture.frames * 0.055));
 
     cv::rectangle(image, cv::Rect(34, 58, kPreviewWidth - 68, kPreviewHeight - 116), cv::Scalar(72, 76, 82), 2);
     cv::line(image, cv::Point(kPreviewWidth / 2, 58), cv::Point(kPreviewWidth / 2, kPreviewHeight - 58), cv::Scalar(54, 58, 64), 1);
     cv::circle(image, cv::Point(std::clamp(x, 40, kPreviewWidth - 40), y), 34, cv::Scalar(220, 220, 220), -1, cv::LINE_AA);
     cv::circle(image, cv::Point(std::clamp(x + direction * 9, 40, kPreviewWidth - 40), y), 13, cv::Scalar(44, 46, 50), -1, cv::LINE_AA);
 
-    const double brightness = std::clamp(0.38 + state.exposure_us / 22000.0 + state.gain_x10 / 650.0, 0.38, 1.35);
+    const double brightness = std::clamp(
+        0.38 + state.exposure_us / 22000.0 + state.gain_x10 / 650.0,
+        0.38,
+        1.35);
     image.convertTo(image, -1, brightness, 0.0);
 
     cv::putText(
@@ -162,7 +72,7 @@ cv::Mat render_camera(const Status& state, bool camera_b) {
     return image;
 }
 
-std::vector<unsigned char> encode_jpeg(const Status& state, bool camera_b) {
+std::vector<unsigned char> encode_jpeg(const bividi::SessionStatus& state, bool camera_b) {
     std::vector<unsigned char> encoded;
     const std::vector<int> params{cv::IMWRITE_JPEG_QUALITY, 82};
     if (!cv::imencode(".jpg", render_camera(state, camera_b), encoded, params)) {
@@ -171,23 +81,24 @@ std::vector<unsigned char> encode_jpeg(const Status& state, bool camera_b) {
     return encoded;
 }
 
-std::string json_status(const Status& s) {
+std::string json_status(const bividi::SessionStatus& s) {
     std::ostringstream out;
     out << "{"
-        << "\"source\":\"synthetic\","
-        << "\"state\":\"" << (s.running ? "streaming" : "paused") << "\","
-        << "\"frame_count\":" << s.frame_count << ","
-        << "\"drops\":" << s.drop_count << ","
-        << "\"acquisition_fps_nominal\":60,"
+        << "\"source\":\"" << s.source_id << "\","
+        << "\"state\":\"" << (s.running() ? "streaming" : "paused") << "\","
+        << "\"frame_count\":" << s.capture.frames << ","
+        << "\"drops\":" << s.capture.drops << ","
+        << "\"acquisition_fps_nominal\":" << s.nominal_fps << ","
+        << "\"acquisition_fps_measured\":" << s.fps << ","
         << "\"preview_fps\":" << kPreviewFps << ","
         << "\"preview_width\":" << kPreviewWidth << ","
         << "\"preview_height\":" << kPreviewHeight << ","
         << "\"exposure_us\":" << s.exposure_us << ","
         << "\"gain_x10\":" << s.gain_x10 << ","
-        << "\"trigger\":\"" << trigger_name(s.trigger_mode) << "\","
+        << "\"trigger\":\"" << bividi::trigger_mode_name(s.trigger_mode) << "\","
         << "\"exposure_start_us\":" << s.exposure_start_us << ","
         << "\"exposure_end_us\":" << s.exposure_end_us << ","
-        << "\"imu_rate_hz\":600,"
+        << "\"imu_rate_hz\":" << s.imu_rate_hz << ","
         << "\"last_action\":\"" << s.last_action << "\""
         << "}";
     return out.str();
@@ -283,7 +194,7 @@ bool parse_int_query(const std::string& path, const char* name, int& out) {
     }
 }
 
-void stream_mjpeg(socket_t s, SyntheticSession& session, bool camera_b) {
+void stream_mjpeg(socket_t s, bividi::CaptureSession& session, bool camera_b) {
     const std::string headers =
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n"
@@ -305,7 +216,7 @@ void stream_mjpeg(socket_t s, SyntheticSession& session, bool camera_b) {
     }
 }
 
-void handle_client(socket_t client, SyntheticSession& session) {
+void handle_client(socket_t client, bividi::CaptureSession& session) {
     std::string request(8192, '\0');
 #ifdef _WIN32
     const int received = recv(client, request.data(), static_cast<int>(request.size()), 0);
@@ -350,7 +261,7 @@ void handle_client(socket_t client, SyntheticSession& session) {
         if (!parse_int_query(path, "value", value)) {
             send_response(client, 400, "Bad Request", "text/plain", "missing or invalid value");
         } else {
-            session.set_exposure(value);
+            session.set_exposure_us(value);
             send_response(client, 200, "OK", "application/json", json_status(session.snapshot()));
         }
     } else if (method == "POST" && route == "/api/gain") {
@@ -358,7 +269,7 @@ void handle_client(socket_t client, SyntheticSession& session) {
         if (!parse_int_query(path, "value", value)) {
             send_response(client, 400, "Bad Request", "text/plain", "missing or invalid value");
         } else {
-            session.set_gain(value);
+            session.set_gain_x10(value);
             send_response(client, 200, "OK", "application/json", json_status(session.snapshot()));
         }
     } else if (method == "GET" && (route == "/snapshot/a.jpg" || route == "/snapshot/b.jpg")) {
@@ -377,7 +288,7 @@ bool is_loopback(const std::string& address) {
 }
 
 int self_test() {
-    SyntheticSession session;
+    bividi::SyntheticCaptureSession session;
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
     auto status = session.snapshot();
     const auto a = encode_jpeg(status, false);
@@ -389,11 +300,14 @@ int self_test() {
     }
 
     session.toggle_capture();
-    session.set_exposure(8123);
-    session.set_gain(37);
+    session.set_exposure_us(8123);
+    session.set_gain_x10(37);
     session.cycle_trigger();
     status = session.snapshot();
-    if (status.running || status.exposure_us != 8123 || status.gain_x10 != 37 || status.trigger_mode != 1) {
+    if (status.running() ||
+        status.exposure_us != 8123 ||
+        status.gain_x10 != 37 ||
+        status.trigger_mode != bividi::TriggerMode::software) {
         std::cerr << "bividi-web self-test: control failure\n";
         return 2;
     }
@@ -464,7 +378,7 @@ int run_server(const std::string& listen_address, int port) {
         return 5;
     }
 
-    SyntheticSession session;
+    bividi::SyntheticCaptureSession session;
     std::cout << "Bividi Web UI: http://" << listen_address << ':' << port << "\n";
     std::cout << "source=synthetic preview=" << kPreviewWidth << 'x' << kPreviewHeight << '@' << kPreviewFps << "fps\n";
     if (!is_loopback(listen_address)) {

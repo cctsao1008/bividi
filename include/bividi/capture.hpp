@@ -46,6 +46,7 @@ private:
 enum class CaptureState {
     idle,
     running,
+    paused,
     disconnected,
     error,
 };

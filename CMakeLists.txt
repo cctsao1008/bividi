@@ -11,10 +11,14 @@ option(BIVIDI_BUILD_VIEWER "Build the OpenCV HighGUI engineering viewer when dep
 option(BIVIDI_BUILD_WEB "Build the lightweight browser engineering console when dependencies are available" ON)
 option(BIVIDI_BUILD_TESTS "Build hardware-independent native tests" ON)
 
+find_package(Threads REQUIRED)
+
 add_library(bividi_core STATIC
     src/native/decxin.cpp
+    src/native/session.cpp
 )
 target_include_directories(bividi_core PUBLIC include)
+target_link_libraries(bividi_core PUBLIC Threads::Threads)
 target_compile_features(bividi_core PUBLIC cxx_std_17)
 
 if(BIVIDI_WITH_OPENCV)
@@ -72,6 +76,10 @@ if(BIVIDI_BUILD_TESTS)
     add_executable(bividi_capture_tests tests/native/test_capture.cpp)
     target_link_libraries(bividi_capture_tests PRIVATE bividi_core)
     add_test(NAME bividi_capture_tests COMMAND bividi_capture_tests)
+
+    add_executable(bividi_session_tests tests/native/test_session.cpp)
+    target_link_libraries(bividi_session_tests PRIVATE bividi_core)
+    add_test(NAME bividi_session_tests COMMAND bividi_session_tests)
 
     if(TARGET bividi_opencv)
         add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
