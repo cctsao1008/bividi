@@ -18,9 +18,11 @@ schemas/imu-calibration-session-v1.schema.json
 schemas/kalibr-dynamic-session-v1.schema.json
 schemas/kalibr-solver-quality-v1.schema.json
 schemas/camera-imu-excitation-v1.schema.json
+schemas/kalibr-target-observations-v1.schema.json
+schemas/kalibr-target-coverage-v1.schema.json
 ```
 
-The first two schemas are promoted numerical calibration artifacts. The IMU session schema is a provenance/evidence manifest used before promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality and dynamic-excitation schemas describe review evidence and likewise are not promoted calibration results. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
+The first two schemas are promoted numerical calibration artifacts. The IMU session schema is a provenance/evidence manifest used before promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality, dynamic-excitation, Kalibr target-observation, and target-coverage schemas describe review evidence and likewise are not promoted calibration results. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
 
 ## Evidence before artifact promotion
 
@@ -42,13 +44,15 @@ tools/prepare_kalibr_dynamic_session.py   dynamic trace -> provenance-bound Kali
 tools/write_kalibr_rosbag.py              legacy ROS1 transport for upstream ethz-asl/kalibr
 tools/write_ros2_calibration_mcap.py      ROS2 rosbag2/MCAP interoperability adapter
 tools/analyze_camera_imu_excitation.py    dynamic time coverage + multi-axis excitation evidence
+tools/export_kalibr_target_observations.py exact pinned-Kalibr AprilGrid observation export
+tools/analyze_kalibr_target_coverage.py   target-ID/image-plane/stereo visual coverage evidence
 tools/import_kalibr_camera_imu.py         strict Kalibr T_cam_imu/time-shift importer
 tools/analyze_kalibr_solver_quality.py    Kalibr normalized/physical residual evidence + explicit gates
 tools/review_camera_imu_time_offset.py    device-time temporal evidence review
 tools/compare_camera_imu_calibrations.py  multi-session spatial/temporal repeatability
 ```
 
-Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, staged Kalibr input bundle, dynamic-excitation report, and Kalibr residual-quality report are not automatically promoted calibration values.
+Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, staged Kalibr input bundle, dynamic-excitation report, Kalibr target-coverage report, and Kalibr residual-quality report are not automatically promoted calibration values.
 
 ## Session provenance gate
 
@@ -160,9 +164,21 @@ and records Kalibr's `T_ci` direction as `imu0 -> cam_i`. A successful external 
 
 The gyroscope proxy uses the eigenvalue balance of `E[ωωᵀ]`. The accelerometer proxy uses the covariance of whole-session mean-centered specific force. These are excitation summaries, not a Kalibr information matrix and not a formal observability proof. Specific-force variation includes both gravity-direction changes and linear acceleration.
 
-The staged camera index does not contain AprilGrid corner geometry, so target image-plane coverage remains explicitly unmeasured by this tool. With no operator-supplied procedure limits, status stays `EVIDENCE_ONLY_NO_THRESHOLDS`.
+With no operator-supplied procedure limits, status stays `EVIDENCE_ONLY_NO_THRESHOLDS`.
 
 See `docs/calibration/camera-imu-dynamic-excitation.md`.
+
+## Kalibr target / image-plane coverage evidence
+
+`tools/export_kalibr_target_observations.py` runs inside the reviewed Kalibr environment and reuses Kalibr's own `GridDetector.findTarget()` plus `GridCalibrationTargetObservation.getCornersImageFrame()` / `getCornersIdx()` surfaces. This avoids introducing an independent detector whose accepted tags, subpixel locations, outlier filtering, or corner IDs could differ from the data Kalibr actually optimizes.
+
+The exporter mirrors the reviewed camera↔IMU AprilGrid setup, records failed detections rather than dropping them, verifies staged camera A/B frame identity, and writes hash-bound detection/corner CSV evidence. The neutral `bividi.calibration.kalibr_target_observations.v1` manifest records the exact Kalibr revision and detector contract.
+
+`tools/analyze_kalibr_target_coverage.py` is dependency-free. It verifies the exported hashes and reports per-camera detection fraction, unique target-corner coverage, normalized image-plane extrema, global corner convex-hull area, target-centroid span, apparent-scale bounding-box proxies, stereo joint-detection fraction, and common corner IDs.
+
+Default status is `EVIDENCE_ONLY_NO_THRESHOLDS`; product/lab gates are opt-in only. These metrics are visual calibration-session evidence, not formal parameter observability or calibration accuracy.
+
+See `docs/calibration/kalibr-target-coverage-lab.md`.
 
 ## Kalibr solver-quality evidence
 
@@ -172,7 +188,7 @@ It preserves per-camera reprojection statistics plus IMU gyroscope/accelerometer
 
 The stereo workflow requires residual evidence for `cam0`, `cam1`, and `imu0`; `no corners` on an expected camera is a structural failure. With no operator-supplied numeric limits the status stays `EVIDENCE_ONLY_NO_THRESHOLDS`. Product- or lab-specific limits may later be supplied explicitly.
 
-Solver residuals measure optimizer fit, not calibration truth. They therefore stay independent from temporal review, repeatability, excitation/observability judgment, protocol-level timing evidence, and downstream VIO validation.
+Solver residuals measure optimizer fit, not calibration truth. They therefore stay independent from temporal review, repeatability, excitation/observability judgment, target coverage, protocol-level timing evidence, and downstream VIO validation.
 
 See:
 
@@ -180,6 +196,7 @@ See:
 docs/calibration/kalibr-dynamic-session.md
 docs/calibration/ros2-mcap-calibration-transport.md
 docs/calibration/camera-imu-dynamic-excitation.md
+docs/calibration/kalibr-target-coverage-lab.md
 docs/calibration/kalibr-result-import-review.md
 docs/calibration/kalibr-solver-quality-gate.md
 docs/calibration/camera-imu-repeatability.md
