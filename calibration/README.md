@@ -17,9 +17,10 @@ schemas/camera-imu-calibration-v1.schema.json
 schemas/imu-calibration-session-v1.schema.json
 schemas/kalibr-dynamic-session-v1.schema.json
 schemas/kalibr-solver-quality-v1.schema.json
+schemas/camera-imu-excitation-v1.schema.json
 ```
 
-The first two schemas are promoted numerical calibration artifacts. The IMU session schema is a provenance/evidence manifest used before promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality schema describes residual-fit evidence extracted from Kalibr's text report and is likewise not a promoted calibration result. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
+The first two schemas are promoted numerical calibration artifacts. The IMU session schema is a provenance/evidence manifest used before promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality and dynamic-excitation schemas describe review evidence and likewise are not promoted calibration results. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
 
 ## Evidence before artifact promotion
 
@@ -40,13 +41,14 @@ tools/export_kalibr_imu.py                reviewed IMU artifact -> Kalibr imu.ya
 tools/prepare_kalibr_dynamic_session.py   dynamic trace -> provenance-bound Kalibr staging bundle
 tools/write_kalibr_rosbag.py              legacy ROS1 transport for upstream ethz-asl/kalibr
 tools/write_ros2_calibration_mcap.py      ROS2 rosbag2/MCAP interoperability adapter
+tools/analyze_camera_imu_excitation.py    dynamic time coverage + multi-axis excitation evidence
 tools/import_kalibr_camera_imu.py         strict Kalibr T_cam_imu/time-shift importer
 tools/analyze_kalibr_solver_quality.py    Kalibr normalized/physical residual evidence + explicit gates
 tools/review_camera_imu_time_offset.py    device-time temporal evidence review
 tools/compare_camera_imu_calibrations.py  multi-session spatial/temporal repeatability
 ```
 
-Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, staged Kalibr input bundle, and Kalibr residual-quality report are not automatically promoted calibration values.
+Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, staged Kalibr input bundle, dynamic-excitation report, and Kalibr residual-quality report are not automatically promoted calibration values.
 
 ## Session provenance gate
 
@@ -152,6 +154,16 @@ t_imu_s = t_camera_reference_s + offset_s
 
 and records Kalibr's `T_ci` direction as `imu0 -> cam_i`. A successful external solve still requires review/import before becoming `bividi.calibration.camera_imu.v1`.
 
+## Dynamic excitation evidence
+
+`tools/analyze_camera_imu_excitation.py` analyzes the already-prepared stereo+IMU session before or alongside the external solve. It SHA-256 binds the staged camera indexes and calibrated IMU CSV, verifies stereo timestamp identity, and reports common time coverage, per-stream cadence, per-axis gyro activity, integrated absolute rotation, specific-force variation, and 3D directionality proxies.
+
+The gyroscope proxy uses the eigenvalue balance of `E[ωωᵀ]`. The accelerometer proxy uses the covariance of whole-session mean-centered specific force. These are excitation summaries, not a Kalibr information matrix and not a formal observability proof. Specific-force variation includes both gravity-direction changes and linear acceleration.
+
+The staged camera index does not contain AprilGrid corner geometry, so target image-plane coverage remains explicitly unmeasured by this tool. With no operator-supplied procedure limits, status stays `EVIDENCE_ONLY_NO_THRESHOLDS`.
+
+See `docs/calibration/camera-imu-dynamic-excitation.md`.
+
 ## Kalibr solver-quality evidence
 
 `tools/analyze_kalibr_solver_quality.py` parses the exact `Normalized Residuals` and `Residuals` sections produced by the pinned ETH Zurich Kalibr `printErrorStatistics()` implementation.
@@ -160,13 +172,14 @@ It preserves per-camera reprojection statistics plus IMU gyroscope/accelerometer
 
 The stereo workflow requires residual evidence for `cam0`, `cam1`, and `imu0`; `no corners` on an expected camera is a structural failure. With no operator-supplied numeric limits the status stays `EVIDENCE_ONLY_NO_THRESHOLDS`. Product- or lab-specific limits may later be supplied explicitly.
 
-Solver residuals measure optimizer fit, not calibration truth. They therefore stay independent from temporal review, repeatability, observability judgment, protocol-level timing evidence, and downstream VIO validation.
+Solver residuals measure optimizer fit, not calibration truth. They therefore stay independent from temporal review, repeatability, excitation/observability judgment, protocol-level timing evidence, and downstream VIO validation.
 
 See:
 
 ```text
 docs/calibration/kalibr-dynamic-session.md
 docs/calibration/ros2-mcap-calibration-transport.md
+docs/calibration/camera-imu-dynamic-excitation.md
 docs/calibration/kalibr-result-import-review.md
 docs/calibration/kalibr-solver-quality-gate.md
 docs/calibration/camera-imu-repeatability.md
