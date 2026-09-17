@@ -6,16 +6,155 @@
   "properties": {
     "schema": {"const": "bividi.calibration.stereo.v1"},
     "calibration_id": {"type": "string", "minLength": 1},
-    "provenance": {"type": "object", "required": ["kind", "source_session_sha256"], "properties": {"kind": {"enum": ["synthetic", "measured", "imported"]}}, "additionalProperties": true},
-    "device": {"type": "object"},
-    "capture": {"type": "object"},
-    "image": {"type": "object", "required": ["width", "height"]},
-    "target": {"type": "object", "required": ["target_id", "family", "sha256"]},
-    "camera_model": {"type": "object"},
-    "cameras": {"type": "object", "required": ["camera_a", "camera_b"]},
-    "stereo": {"type": "object", "required": ["R_camera_b_from_camera_a", "T_camera_b_from_camera_a_m", "baseline_m", "E", "F", "stereo_rms_px"]},
-    "rectification": {"type": "object", "required": ["R1", "R2", "P1", "P2", "Q", "vertical_epipolar_abs_px"]},
-    "quality": {"type": "object", "required": ["status", "gates"]}
+    "provenance": {
+      "type": "object",
+      "required": ["kind", "source_session_sha256"],
+      "properties": {
+        "kind": {"enum": ["synthetic", "measured", "imported"]},
+        "source_session_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      },
+      "additionalProperties": true
+    },
+    "device": {
+      "type": "object",
+      "required": ["model", "serial"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "serial": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "capture": {
+      "type": "object",
+      "required": ["mode_index", "pixel_format", "width", "height", "camera_a_identity", "camera_b_identity"],
+      "properties": {
+        "mode_index": {"type": "integer", "minimum": 0},
+        "pixel_format": {"type": "string", "minLength": 1},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "camera_a_identity": {"type": "string", "minLength": 1},
+        "camera_b_identity": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "image": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": true
+    },
+    "target": {
+      "type": "object",
+      "required": ["target_id", "family", "sha256"],
+      "properties": {
+        "target_id": {"type": "string", "minLength": 1},
+        "family": {"enum": ["charuco", "aprilgrid"]},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      },
+      "additionalProperties": true
+    },
+    "camera_model": {
+      "type": "object",
+      "required": ["projection", "distortion"],
+      "properties": {
+        "projection": {"const": "pinhole"},
+        "distortion": {"enum": ["opencv5", "opencv-rational"]}
+      },
+      "additionalProperties": true
+    },
+    "cameras": {
+      "type": "object",
+      "required": ["camera_a", "camera_b"],
+      "properties": {
+        "camera_a": {"$ref": "#/$defs/camera"},
+        "camera_b": {"$ref": "#/$defs/camera"}
+      },
+      "additionalProperties": true
+    },
+    "stereo": {
+      "type": "object",
+      "required": ["R_camera_b_from_camera_a", "T_camera_b_from_camera_a_m", "baseline_m", "E", "F", "stereo_rms_px", "valid_pair_count"],
+      "properties": {
+        "R_camera_b_from_camera_a": {"$ref": "#/$defs/mat3"},
+        "T_camera_b_from_camera_a_m": {"$ref": "#/$defs/vec3"},
+        "baseline_m": {"type": "number", "exclusiveMinimum": 0},
+        "E": {"$ref": "#/$defs/mat3"},
+        "F": {"$ref": "#/$defs/mat3"},
+        "stereo_rms_px": {"type": "number", "minimum": 0},
+        "valid_pair_count": {"type": "integer", "minimum": 3}
+      },
+      "additionalProperties": true
+    },
+    "rectification": {
+      "type": "object",
+      "required": ["R1", "R2", "P1", "P2", "Q", "valid_roi_camera_a", "valid_roi_camera_b", "vertical_epipolar_abs_px"],
+      "properties": {
+        "R1": {"$ref": "#/$defs/mat3"},
+        "R2": {"$ref": "#/$defs/mat3"},
+        "P1": {"$ref": "#/$defs/mat34"},
+        "P2": {"$ref": "#/$defs/mat34"},
+        "Q": {"$ref": "#/$defs/mat4"},
+        "valid_roi_camera_a": {"$ref": "#/$defs/roi"},
+        "valid_roi_camera_b": {"$ref": "#/$defs/roi"},
+        "vertical_epipolar_abs_px": {"$ref": "#/$defs/distribution"}
+      },
+      "additionalProperties": true
+    },
+    "quality": {
+      "type": "object",
+      "required": ["status", "gates"],
+      "properties": {
+        "status": {"enum": ["EVIDENCE_ONLY_NO_THRESHOLDS", "PASS", "FAIL"]},
+        "gates": {"type": "object"},
+        "policy_source": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "numberRow3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "numberRow4": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+    "mat3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/numberRow3"}},
+    "mat34": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/numberRow4"}},
+    "mat4": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/numberRow4"}},
+    "vec3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "roi": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer", "minimum": 0}},
+    "distribution": {
+      "type": "object",
+      "required": ["count", "min", "max", "mean", "median", "p95"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1},
+        "min": {"type": "number", "minimum": 0},
+        "max": {"type": "number", "minimum": 0},
+        "mean": {"type": "number", "minimum": 0},
+        "median": {"type": "number", "minimum": 0},
+        "p95": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "camera": {
+      "type": "object",
+      "required": ["K", "D", "mono_rms_px", "per_view_reprojection_rms_px", "pinhole_fov_deg"],
+      "properties": {
+        "K": {"$ref": "#/$defs/mat3"},
+        "D": {"type": "array", "minItems": 4, "items": {"type": "number"}},
+        "mono_rms_px": {"type": "number", "minimum": 0},
+        "per_view_reprojection_rms_px": {"type": "array", "minItems": 1, "items": {"type": "number", "minimum": 0}},
+        "pinhole_fov_deg": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 180},
+            "y": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 180}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }
