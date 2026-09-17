@@ -37,7 +37,11 @@ tools/imu_calibration_provenance.py       session compatibility + SHA-256 promot
 tools/analyze_imu_config_consistency.py   declared range/ODR vs measured-response consistency
 tools/export_kalibr_imu.py                reviewed IMU artifact -> Kalibr imu.yaml adapter
 tools/prepare_kalibr_dynamic_session.py   dynamic trace -> provenance-bound Kalibr staging bundle
-tools/write_kalibr_rosbag.py              optional external ROS1 bag writer
+tools/write_kalibr_rosbag.py              legacy ROS1 transport for upstream ethz-asl/kalibr
+tools/write_ros2_calibration_mcap.py      ROS2 rosbag2/MCAP interoperability adapter
+tools/import_kalibr_camera_imu.py         strict Kalibr T_cam_imu/time-shift importer
+tools/review_camera_imu_time_offset.py    device-time temporal evidence review
+tools/compare_camera_imu_calibrations.py  multi-session spatial/temporal repeatability
 ```
 
 Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, and a staged Kalibr input bundle are not automatically promoted calibration values.
@@ -118,9 +122,27 @@ raw IMU counts + extended IMU timestamps
 
 The staged bundle contains camera indexes, calibrated `imu0.csv`, `camchain.yaml`, `imu.yaml`, AprilGrid `target.yaml`, `rosbag-recipe.json`, and `session.json`. The preparer verifies camera/IMU specimen identity and hashes all critical sources.
 
-Kalibr's IMU-camera CLI requires a ROS bag. `tools/write_kalibr_rosbag.py` is deliberately an **external** adapter: it lazily imports ROS1 `rosbag`, `rospy`, `sensor_msgs`, and Python OpenCV only when actually writing the bag. Normal Bividi CI runs its dependency-free self-test but does not install ROS1/Kalibr.
+### Transport boundary
 
-The adapter keeps the Kalibr/Bividi time-shift sign contract explicit:
+The staged bundle is transport-neutral evidence even though the upstream reference solver is not.
+
+```text
+Bividi staged session
+        |
+        +--> tools/write_ros2_calibration_mcap.py
+        |       ROS2 rosbag2 + MCAP interoperability / replay
+        |
+        +--> tools/write_kalibr_rosbag.py
+                ROS1 .bag compatibility for upstream ethz-asl/kalibr
+```
+
+`tools/write_kalibr_rosbag.py` therefore remains a **legacy external-solver transport adapter**, not the Bividi recording architecture. It lazily imports ROS1 `rosbag`, `rospy`, `sensor_msgs`, and Python OpenCV only when actually writing the upstream Kalibr bag.
+
+`tools/write_ros2_calibration_mcap.py` is the modern ROS2 interoperability path. It lazily imports `rosbag2_py`, ROS2 message serialization, `sensor_msgs`, the rosbag2 MCAP storage plugin, and Python OpenCV. It writes the same staged camera and IMU timestamps into ROS2 message headers and rosbag2 record timestamps without substituting host-arrival time.
+
+Normal Bividi CI runs dependency-free self-tests for both adapters and does not install complete ROS1/ROS2 distributions.
+
+The Kalibr adapter keeps the Bividi time-shift sign contract explicit:
 
 ```text
 t_imu_s = t_camera_reference_s + offset_s
@@ -128,7 +150,14 @@ t_imu_s = t_camera_reference_s + offset_s
 
 and records Kalibr's `T_ci` direction as `imu0 -> cam_i`. A successful external solve still requires review/import before becoming `bividi.calibration.camera_imu.v1`.
 
-See `docs/calibration/kalibr-dynamic-session.md`.
+See:
+
+```text
+docs/calibration/kalibr-dynamic-session.md
+docs/calibration/ros2-mcap-calibration-transport.md
+docs/calibration/kalibr-result-import-review.md
+docs/calibration/camera-imu-repeatability.md
+```
 
 ## Provenance is mandatory
 
@@ -186,4 +215,4 @@ A measured artifact should identify enough context to reject accidental reuse ac
 
 Large source datasets remain external to normal Git history. Keep the session manifest with the retained evidence bundle; its hashes are the integrity link between the promoted artifact and large external source data.
 
-Related: #8, #35, #47.
+Related: #8, #11, #35, #47.

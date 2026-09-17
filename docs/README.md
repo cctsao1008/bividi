@@ -9,7 +9,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`native-runtime.md`](native-runtime.md) — C++/OpenCV production runtime and Python reference/oracle role
 - [`viewer.md`](viewer.md) — minimal OpenCV diagnostic viewer and local control surface
 - [`web-ui.md`](web-ui.md) — lightweight browser engineering console, HTTP/MJPEG boundary, and security posture
-- [`recording.md`](recording.md) — recording/replay contract and MCAP role
+- [`recording.md`](recording.md) — recording/replay contract, MCAP preference, and container-independence rule
 
 ## Active reference device
 
@@ -35,7 +35,8 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`calibration/imu-gyro-rotation-lab.md`](calibration/imu-gyro-rotation-lab.md) — controlled +/-XYZ turns for gyro bias-corrected integration, axis/sign mapping, pair symmetry, optional rate-scale evidence, and accel↔gyro frame comparison
 - [`calibration/imu-calibration-provenance-gate.md`](calibration/imu-calibration-provenance-gate.md) — hash-bound session manifest tying specimen, SDK/firmware, camera mode, IMU range/ODR/filter declarations, raw traces, and analysis reports before calibration promotion
 - [`calibration/imu-config-consistency-lab.md`](calibration/imu-config-consistency-lab.md) — measured-vs-declared accel range, gyro range, and device-timestamp ODR consistency checks without pretending to read sensor registers
-- [`calibration/kalibr-dynamic-session.md`](calibration/kalibr-dynamic-session.md) — synchronized stereo+raw-IMU recorder, explicit ES/midpoint/EE timestamp mapping, hash-bound raw→SI conversion, Kalibr bundle staging, and optional external ROS1 bag writer
+- [`calibration/kalibr-dynamic-session.md`](calibration/kalibr-dynamic-session.md) — synchronized stereo+raw-IMU recorder, explicit ES/midpoint/EE timestamp mapping, hash-bound raw→SI conversion, Kalibr bundle staging, and legacy ROS1 upstream-solver adapter
+- [`calibration/ros2-mcap-calibration-transport.md`](calibration/ros2-mcap-calibration-transport.md) — modern ROS2/rosbag2 MCAP transport adapter while keeping ROS1 isolated to upstream Kalibr compatibility
 - [`calibration/kalibr-result-import-review.md`](calibration/kalibr-result-import-review.md) — strict `T_cam_imu` / `timeshift_cam_imu` import, solver/session provenance, and device-time temporal evidence review without turning nearest-sample geometry into a fake offset estimator
 - [`calibration/camera-imu-repeatability.md`](calibration/camera-imu-repeatability.md) — repeated-solve SE(3)/time-offset consistency, compatibility gating, and optional requirement-based repeatability thresholds
 
