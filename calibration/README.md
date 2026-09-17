@@ -15,16 +15,18 @@ Issue #47  IMU + camera↔IMU calibration
 schemas/imu-calibration-v1.schema.json
 schemas/camera-imu-calibration-v1.schema.json
 schemas/imu-calibration-session-v1.schema.json
+schemas/kalibr-dynamic-session-v1.schema.json
 ```
 
-The first two schemas are promoted numerical calibration artifacts. The IMU session schema is a provenance/evidence manifest used before promotion. These contracts are intentionally independent of OpenCV, ROS, Kalibr, DECXIN/Nori transport structs, and runtime backend types. External solver formats are adapters, not Bividi's persistent public calibration schema.
+The first two schemas are promoted numerical calibration artifacts. The IMU session schema is a provenance/evidence manifest used before promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
 
 ## Evidence before artifact promotion
 
-Issue #47 deliberately separates measurement evidence from a promoted calibration artifact. Current hardware-independent tooling includes:
+Issue #47 deliberately separates measurement evidence from a promoted calibration artifact. Current tooling includes:
 
 ```text
 bividi-nori-imu-record                    lossless raw IMU + ES/EE trace
+bividi-nori-calib-record                  synchronized stereo PNG + raw IMU dynamic trace
 
 tools/audit_imu_timing.py                 device-time cadence / gap / camera↔IMU timing audit
 tools/analyze_imu_stationary.py           stationary raw bias/variance evidence
@@ -34,9 +36,11 @@ tools/analyze_imu_gyro_rotation.py        controlled-turn gyro axis/sign/scale s
 tools/imu_calibration_provenance.py       session compatibility + SHA-256 promotion gate
 tools/analyze_imu_config_consistency.py   declared range/ODR vs measured-response consistency
 tools/export_kalibr_imu.py                reviewed IMU artifact -> Kalibr imu.yaml adapter
+tools/prepare_kalibr_dynamic_session.py   dynamic trace -> provenance-bound Kalibr staging bundle
+tools/write_kalibr_rosbag.py              optional external ROS1 bag writer
 ```
 
-Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, and Allan-derived Kalibr candidates are not automatically written into `bividi.calibration.imu.v1`.
+Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, and a staged Kalibr input bundle are not automatically promoted calibration values.
 
 ## Session provenance gate
 
@@ -97,6 +101,34 @@ The tool re-verifies every bound analysis SHA-256 before using it. By default it
 Filter declarations remain provenance only: scale and cadence experiments cannot uniquely identify filter register settings.
 
 See `docs/calibration/imu-config-consistency-lab.md`.
+
+## Kalibr dynamic-session adapter
+
+`bividi.calibration.kalibr_dynamic_session.v1` records one staged dynamic camera↔IMU input bundle.
+
+The live recorder keeps raw evidence lossless:
+
+```text
+camera_a/camera_b lossless mono PNG
+ES and EE timestamps kept separately
+raw IMU counts + extended IMU timestamps
+```
+
+`tools/prepare_kalibr_dynamic_session.py` then requires an explicit camera image-time semantic (`exposure_start`, `exposure_midpoint`, or `exposure_end`) and converts raw IMU counts using the hash-bound six-position and known-angle gyro reports. Vendor-demo `±4 g / ±1000 dps` constants are not used as export truth.
+
+The staged bundle contains camera indexes, calibrated `imu0.csv`, `camchain.yaml`, `imu.yaml`, AprilGrid `target.yaml`, `rosbag-recipe.json`, and `session.json`. The preparer verifies camera/IMU specimen identity and hashes all critical sources.
+
+Kalibr's IMU-camera CLI requires a ROS bag. `tools/write_kalibr_rosbag.py` is deliberately an **external** adapter: it lazily imports ROS1 `rosbag`, `rospy`, `sensor_msgs`, and Python OpenCV only when actually writing the bag. Normal Bividi CI runs its dependency-free self-test but does not install ROS1/Kalibr.
+
+The adapter keeps the Kalibr/Bividi time-shift sign contract explicit:
+
+```text
+t_imu_s = t_camera_reference_s + offset_s
+```
+
+and records Kalibr's `T_ci` direction as `imu0 -> cam_i`. A successful external solve still requires review/import before becoming `bividi.calibration.camera_imu.v1`.
+
+See `docs/calibration/kalibr-dynamic-session.md`.
 
 ## Provenance is mandatory
 
