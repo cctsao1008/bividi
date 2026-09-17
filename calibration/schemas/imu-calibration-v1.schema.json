@@ -102,14 +102,34 @@
         "tool": {"type": "string", "minLength": 1},
         "tool_version": {"type": "string"},
         "tool_revision": {"type": "string"},
-        "source_session": {"type": "string"},
-        "source_hash": {"type": "string"},
+        "source_session": {"type": "string", "minLength": 1},
+        "source_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "external_backend": {"type": "string"},
         "external_backend_revision": {"type": "string"},
         "external_backend_container": {"type": "string"}
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {"kind": {"const": "measured"}},
+            "required": ["kind"]
+          }
+        },
+        "required": ["provenance"]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "required": ["source_session", "source_hash"]
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "vector3": {
       "type": "array",
