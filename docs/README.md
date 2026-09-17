@@ -36,6 +36,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`calibration/imu-calibration-provenance-gate.md`](calibration/imu-calibration-provenance-gate.md) — hash-bound session manifest tying specimen, SDK/firmware, camera mode, IMU range/ODR/filter declarations, raw traces, and analysis reports before calibration promotion
 - [`calibration/imu-config-consistency-lab.md`](calibration/imu-config-consistency-lab.md) — measured-vs-declared accel range, gyro range, and device-timestamp ODR consistency checks without pretending to read sensor registers
 - [`calibration/kalibr-dynamic-session.md`](calibration/kalibr-dynamic-session.md) — synchronized stereo+raw-IMU recorder, explicit ES/midpoint/EE timestamp mapping, hash-bound raw→SI conversion, Kalibr bundle staging, and optional external ROS1 bag writer
+- [`calibration/kalibr-result-import-review.md`](calibration/kalibr-result-import-review.md) — strict `T_cam_imu` / `timeshift_cam_imu` import, solver/session provenance, and device-time temporal evidence review without turning nearest-sample geometry into a fake offset estimator
 
 ## Research / interoperability
 
