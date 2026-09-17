@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bividi stereo calibration session v1",
+  "type": "object",
+  "required": ["schema", "session_id", "provenance", "device", "capture", "target", "pairs"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo_session.v1"},
+    "session_id": {"type": "string", "minLength": 1},
+    "provenance": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {"kind": {"enum": ["synthetic", "measured", "imported"]}},
+      "additionalProperties": true
+    },
+    "device": {
+      "type": "object",
+      "required": ["model", "serial"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "serial": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "capture": {
+      "type": "object",
+      "required": ["mode_index", "pixel_format", "width", "height", "camera_a_identity", "camera_b_identity"],
+      "properties": {
+        "mode_index": {"type": "integer", "minimum": 0},
+        "pixel_format": {"type": "string", "minLength": 1},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "camera_a_identity": {"type": "string", "minLength": 1},
+        "camera_b_identity": {"type": "string", "minLength": 1},
+        "camera_mapping_evidence": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "target": {
+      "type": "object",
+      "required": ["path", "sha256", "target_id"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "target_id": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "source_trace": {
+      "type": "object",
+      "required": ["kind", "artifacts"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["role", "path", "sha256"],
+            "properties": {
+              "role": {"type": "string", "minLength": 1},
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+              "schema": {"type": "string"}
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "pairs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["pair_id", "camera_a", "camera_b"],
+        "properties": {
+          "pair_id": {"type": "string", "minLength": 1},
+          "camera_a": {"type": "string", "minLength": 1},
+          "camera_b": {"type": "string", "minLength": 1},
+          "camera_a_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+          "camera_b_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+          "source_frame_index": {"type": "integer", "minimum": 0},
+          "frame_sequence": {"type": "integer", "minimum": 0},
+          "host_receive_monotonic_ns": {"type": "integer", "minimum": 0},
+          "exposure_start_raw_us": {"type": "integer", "minimum": 0},
+          "exposure_end_raw_us": {"type": "integer", "minimum": 0},
+          "exposure_start_extended_us": {"type": "integer", "minimum": 0},
+          "exposure_end_extended_us": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

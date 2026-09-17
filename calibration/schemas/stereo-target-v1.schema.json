@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bividi stereo calibration target v1",
+  "type": "object",
+  "required": ["schema", "target_id", "family", "physical_size_mm", "provenance"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo_target.v1"},
+    "target_id": {"type": "string", "minLength": 1},
+    "family": {"enum": ["charuco", "aprilgrid"]},
+    "physical_size_mm": {"type": "object", "required": ["width", "height"], "properties": {"width": {"type": "number", "exclusiveMinimum": 0}, "height": {"type": "number", "exclusiveMinimum": 0}}, "additionalProperties": true},
+    "charuco": {"type": "object"},
+    "aprilgrid": {"type": "object"},
+    "print_scale_verification": {"type": "object"},
+    "provenance": {"type": "object"}
+  },
+  "additionalProperties": true
+}

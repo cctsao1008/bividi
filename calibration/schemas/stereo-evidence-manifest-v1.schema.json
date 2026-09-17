@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bividi stereo evidence manifest v1",
+  "type": "object",
+  "required": ["schema", "profile", "evidence", "findings", "disposition"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo_evidence_manifest.v1"},
+    "profile": {"enum": ["integrity", "review", "promotion"]},
+    "policy_source": {"type": ["string", "null"]},
+    "evidence": {"type": "array", "minItems": 7, "items": {"type": "object", "required": ["role", "path", "sha256", "schema"]}},
+    "findings": {"type": "array", "items": {"type": "string"}},
+    "disposition": {"enum": ["INTEGRITY_OK", "REVIEWABLE", "PROMOTION_READY", "FAIL"]}
+  },
+  "additionalProperties": true
+}
