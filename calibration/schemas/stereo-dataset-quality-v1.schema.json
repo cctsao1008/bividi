@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bividi stereo dataset quality v1",
+  "type": "object",
+  "required": ["schema", "session", "target", "summary", "cameras", "gates", "status"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo_dataset_quality.v1"},
+    "session": {"type": "object", "required": ["path", "sha256", "session_id"]},
+    "target": {"type": "object", "required": ["path", "sha256", "target_id"]},
+    "pairs": {"type": "array"},
+    "summary": {"type": "object"},
+    "cameras": {"type": "object", "required": ["camera_a", "camera_b"]},
+    "gates": {"type": "object"},
+    "policy_source": {"type": ["string", "null"]},
+    "status": {"enum": ["EVIDENCE_ONLY_NO_THRESHOLDS", "PASS", "FAIL"]}
+  },
+  "additionalProperties": true
+}
