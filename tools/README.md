@@ -24,10 +24,11 @@ review_calibration_target_scale.py    physical printed-target scale evidence
 review_stereo_geometry.py             calibrated baseline vs physical measurement
 compare_stereo_calibrations.py        independent-session intrinsic/extrinsic repeatability
 stereo_calibration_provenance.py      final hash-bound stereo evidence/promotion gate
+render_stereo_calibration_report.py   human-readable evidence summary
 plan_stereo_calibration_campaign.py   specimen-specific #8 campaign/runbook + schema audit
 ```
 
-The native stereo workbench uses Python OpenCV + NumPy only for target rendering, target detection, solving, and rectification. Its evidence reviews, repeatability gate, promotion gate, and campaign planner are dependency-light standard-library tools. Native calibration uses ChArUco; AprilGrid metadata is retained as a separate optional Kalibr interoperability path. No universal RMS, coverage, baseline, or repeatability thresholds are invented by these tools.
+The native stereo workbench uses Python OpenCV + NumPy only for target rendering, target detection, solving, and rectification. Its evidence reviews, repeatability gate, promotion gate, report renderer, and campaign planner are dependency-light standard-library tools. Native calibration uses ChArUco; AprilGrid metadata is retained as a separate optional Kalibr interoperability path. No universal RMS, coverage, baseline, or repeatability thresholds are invented by these tools.
 
 Camera↔IMU dynamic review is split by evidence class:
 
