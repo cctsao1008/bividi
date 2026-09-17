@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "gates", "status"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo_repeatability.v1"},
+    "gates": {"type": "object"},
+    "policy_source": {"type": ["string", "null"]},
+    "status": {"enum": ["EVIDENCE_ONLY_NO_THRESHOLDS", "PASS", "FAIL"]}
+  },
+  "additionalProperties": true
+}
