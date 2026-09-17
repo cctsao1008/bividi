@@ -7,7 +7,9 @@ Status: hardware-independent recorder/export contract implemented; physical AR02
 
 ## Purpose
 
-This laboratory turns one synchronized Bividi stereo+IMU motion recording into a provenance-bound Kalibr input bundle without making ROS1 or Kalibr a Bividi Core/runtime dependency.
+This laboratory turns one synchronized Bividi stereo+IMU motion recording into a provenance-bound Kalibr input bundle without making ROS1, ROS2, MCAP, or Kalibr a Bividi Core/runtime dependency.
+
+The staged Bividi session is the source of truth. Transport is selected at the boundary:
 
 ```text
 Nori live stereo + embedded IMU
@@ -27,18 +29,22 @@ camera_a/camera_b → cam0/cam1 mapping
             ↓
 camchain.yaml + imu.yaml + target.yaml
 camera indexes + calibrated imu0.csv
-rosbag-recipe.json + session.json
-            ↓
-write_kalibr_rosbag.py   (external ROS1 environment)
-            ↓
-kalibr_dynamic.bag
-            ↓
-kalibr_calibrate_imu_camera
-            ↓
-T_ci + timeshift_cam_imu evidence
+session.json
+            |
+            +--> write_ros2_calibration_mcap.py
+            |       ROS2 rosbag2 / MCAP interoperability
+            |
+            +--> write_kalibr_rosbag.py
+                    legacy ROS1 compatibility for upstream ethz-asl/kalibr
+                            ↓
+                    kalibr_dynamic.bag
+                            ↓
+                    kalibr_calibrate_imu_camera
+                            ↓
+                    T_ci + timeshift_cam_imu evidence
 ```
 
-The staged bundle is **input evidence**, not a calibration result.
+The staged bundle is **input evidence**, not a calibration result. ROS1 exists here only because the pinned upstream reference solver requires that transport; it is not the Bividi recording architecture.
 
 ## Why the timestamp contract is explicit
 
@@ -61,7 +67,7 @@ exposure_midpoint
 exposure_end
 ```
 
-Mapping to ROS header time is:
+Mapping to sensor message time is:
 
 ```text
 start:      t_ns = ES_us * 1000
@@ -245,11 +251,45 @@ rosbag-recipe.json
 kalibr-command.txt
 ```
 
-`session.json` is `bividi.calibration.kalibr_dynamic_session.v1` and hashes all critical upstream evidence.
+`session.json` is `bividi.calibration.kalibr_dynamic_session.v1` and hashes all critical upstream evidence. `rosbag-recipe.json` is retained specifically for the upstream ROS1 Kalibr compatibility path; the staged CSV/image/session evidence is not ROS1-specific.
 
-## ROS1 bag adapter
+## ROS2 / MCAP interoperability adapter
 
-Kalibr's IMU-camera CLI requires a ROS bag. Bividi keeps bag creation external:
+The preferred modern robotics transport for a prepared calibration session is ROS2 `rosbag2` with MCAP storage:
+
+```bash
+python tools/write_ros2_calibration_mcap.py \
+  ar0234_kalibr_001 \
+  --output-uri ar0234_kalibr_001/ros2_calibration
+```
+
+The adapter lazily imports:
+
+```text
+rosbag2_py
+rclpy serialization
+sensor_msgs
+cv2
+rosbag2 MCAP storage plugin
+```
+
+and publishes:
+
+```text
+/cam0/image_raw   sensor_msgs/msg/Image mono8
+/cam1/image_raw   sensor_msgs/msg/Image mono8
+/imu0             sensor_msgs/msg/Imu
+```
+
+The prepared sensor timestamp is used for both ROS2 `header.stamp` and rosbag2 record time. The writer explicitly requests storage id `mcap`; the rosbag2 storage plugin controls the final file/layout convention.
+
+This ROS2/MCAP output is intended for modern replay, inspection, robotics interoperability, and future solver-backend cross-checks. It is not currently the authoritative input path for the pinned upstream Kalibr backend.
+
+See `docs/calibration/ros2-mcap-calibration-transport.md`.
+
+## ROS1 bag compatibility adapter
+
+The pinned upstream Kalibr IMU-camera CLI requires a ROS1 bag. Bividi therefore keeps a narrow compatibility adapter:
 
 ```bash
 python tools/write_kalibr_rosbag.py ar0234_kalibr_001
@@ -276,6 +316,18 @@ The writer publishes:
 
 `header.stamp` and bag record time are set to the same prepared sensor timestamp. The bag writer streams/merges the three CSV indexes rather than loading the entire high-rate session into memory.
 
+This path should be read as:
+
+```text
+upstream solver compatibility
+```
+
+not:
+
+```text
+Bividi is ROS1-based
+```
+
 ## Run Kalibr
 
 The bundle records the exact command:
@@ -290,19 +342,38 @@ kalibr_calibrate_imu_camera \
 
 Temporal calibration remains enabled unless the operator explicitly disables it in Kalibr.
 
+## Future backend equivalence
+
+A ROS2-native Kalibr port or other camera↔IMU solver may be evaluated later, but it must use the same Bividi source session and be compared against the pinned upstream reference before promotion.
+
+At minimum compare:
+
+```text
+T_cam_imu translation
+T_cam_imu rotation
+time offset
+reprojection residuals
+gyroscope residuals
+accelerometer residuals
+multi-session repeatability
+```
+
+Transport modernization must not silently become a solver change.
+
 ## Guardrails
 
-- `host_receive_monotonic_ns` is provenance, not the Kalibr sensor timestamp.
+- `host_receive_monotonic_ns` is provenance, not the sensor timestamp.
 - ES/EE are preserved independently before the operator selects one image-time semantic.
 - `camera_a`/`camera_b` do not imply left/right.
 - Raw IMU conversion requires measured/hash-bound experiment evidence; vendor-demo scale constants are not accepted.
 - A staged bundle is not a successful Kalibr solve.
 - A successful Kalibr solve is not automatically a promoted Bividi artifact; transform direction, timestamp semantic, protocol timing evidence, target extraction quality, solver report, and provenance still require review.
-- ROS1/Kalibr remain outside Bividi Core and normal runtime/CI.
+- ROS2/MCAP is an adapter, not Bividi Core semantics.
+- ROS1 is isolated to upstream solver compatibility and is not the preferred recording architecture.
 
 ## Source-contract audit
 
-The adapter contract was checked against Kalibr revision `1f60227442d25e36365ef5f72cd80b9666d73467`:
+The legacy Kalibr adapter contract was checked against Kalibr revision `1f60227442d25e36365ef5f72cd80b9666d73467`:
 
 ```text
 kalibr_calibrate_imu_camera
@@ -321,6 +392,6 @@ kalibr_imu_camera_calibration/IccUtil.py
   timeshift: t_imu = t_cam + shift
 ```
 
-If a future Kalibr revision changes these contracts, update the adapter before changing Bividi's persistent calibration semantics.
+If a future Kalibr revision changes these contracts, update the compatibility adapter before changing Bividi's persistent calibration semantics.
 
-Related: #35, #8, #47, #46.
+Related: #11, #35, #8, #47, #46.
