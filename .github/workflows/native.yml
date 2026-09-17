@@ -45,8 +45,10 @@ jobs:
         run: python tools/analyze_imu_config_consistency.py --self-test
       - name: Kalibr dynamic-session preparer self-test
         run: python tools/prepare_kalibr_dynamic_session.py --self-test
-      - name: Kalibr ROS1 bag writer self-test
+      - name: Kalibr ROS1 legacy bag adapter self-test
         run: python tools/write_kalibr_rosbag.py --self-test
+      - name: ROS2 calibration MCAP adapter self-test
+        run: python tools/write_ros2_calibration_mcap.py --self-test
       - name: Kalibr camera-IMU importer self-test
         run: python tools/import_kalibr_camera_imu.py --self-test
       - name: Camera-IMU temporal evidence review self-test
