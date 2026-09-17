@@ -27,6 +27,7 @@ analyze_kalibr_solver_quality.py       normalized/physical optimizer residual ev
 review_camera_imu_time_offset.py       device-time temporal sanity evidence
 compare_camera_imu_calibrations.py     independent-session repeatability evidence
 camera_imu_calibration_provenance.py   final hash-bound integrity/review/promotion gate
+plan_camera_imu_physical_campaign.py   specimen-specific physical campaign plan + artifact audit
 ```
 
 The target-observation exporter is the only one of the two visual-coverage tools that requires the external Kalibr runtime; the coverage analyzer is standard-library-only. The exporter deliberately reuses Kalibr's `GridDetector` observation surface rather than introducing an independent AprilTag detector with potentially different corner semantics.
@@ -34,3 +35,5 @@ The target-observation exporter is the only one of the two visual-coverage tools
 Inertial excitation, target/image-plane coverage, residual fit, temporal plausibility, and repeatability are related but are not interchangeable claims. The excitation and coverage analyzers report evidence/proxies rather than claiming formal estimator observability.
 
 The final provenance gate does not invent or duplicate numeric limits. Component analyzers own their explicit thresholds; the `promotion` profile only accepts evidence that is hash-consistent, explicitly gated, `PASS`, and tied to a named lab/product acceptance policy.
+
+The physical campaign planner sits one level above those tools. It orders the live-hardware workflow and audits expected artifact presence/schema, but deliberately does not duplicate hashes, quality thresholds, external solver logic, or promotion decisions.
