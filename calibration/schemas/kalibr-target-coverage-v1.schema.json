@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/kalibr-target-coverage-v1.schema.json",
+  "title": "Bividi Kalibr target coverage v1",
+  "type": "object",
+  "required": ["schema", "source", "source_artifacts", "kalibr", "target", "cameras", "stereo", "assessment", "metric_semantics", "guardrails", "provenance"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.kalibr_target_coverage.v1"},
+    "created_utc": {"type": "string"},
+    "source": {"$ref": "#/$defs/fileRef"},
+    "source_artifacts": {
+      "type": "object",
+      "required": ["detections_csv", "corners_csv"],
+      "properties": {
+        "detections_csv": {"$ref": "#/$defs/fileRef"},
+        "corners_csv": {"$ref": "#/$defs/fileRef"}
+      },
+      "additionalProperties": false
+    },
+    "kalibr": {"type": ["object", "null"]},
+    "target": {"type": "object"},
+    "cameras": {
+      "type": "object",
+      "required": ["camera_a", "camera_b"],
+      "properties": {
+        "camera_a": {"$ref": "#/$defs/cameraCoverage"},
+        "camera_b": {"$ref": "#/$defs/cameraCoverage"}
+      },
+      "additionalProperties": false
+    },
+    "stereo": {
+      "type": "object",
+      "required": ["frames", "both_cameras_detected_frames", "both_cameras_detection_fraction", "common_corner_ids_per_joint_detection"],
+      "properties": {
+        "frames": {"type": "integer", "minimum": 1},
+        "both_cameras_detected_frames": {"type": "integer", "minimum": 0},
+        "both_cameras_detection_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "common_corner_ids_per_joint_detection": {"$ref": "#/$defs/distribution"}
+      }
+    },
+    "metric_semantics": {"type": "object"},
+    "guardrails": {"type": "array", "items": {"type": "string"}},
+    "assessment": {
+      "type": "object",
+      "required": ["status", "failed_gates", "thresholds"],
+      "properties": {
+        "status": {"enum": ["EVIDENCE_ONLY_NO_THRESHOLDS", "PASS", "FAIL"]},
+        "failed_gates": {"type": "array", "items": {"type": "string"}},
+        "thresholds": {"type": "object"}
+      }
+    },
+    "provenance": {"type": "object"}
+  },
+  "$defs": {
+    "fileRef": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "distribution": {
+      "type": "object",
+      "required": ["count", "min", "max", "mean", "p50", "p95"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "min": {"type": ["number", "null"]},
+        "max": {"type": ["number", "null"]},
+        "mean": {"type": ["number", "null"]},
+        "p50": {"type": ["number", "null"]},
+        "p95": {"type": ["number", "null"]}
+      }
+    },
+    "cameraCoverage": {
+      "type": "object",
+      "required": ["frames", "successful_frames", "detection_fraction", "observed_corners_per_successful_frame", "unique_target_corner_ids", "target_corner_fraction", "image_plane"],
+      "properties": {
+        "frames": {"type": "integer", "minimum": 1},
+        "successful_frames": {"type": "integer", "minimum": 0},
+        "detection_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "observed_corners_per_successful_frame": {"$ref": "#/$defs/distribution"},
+        "unique_target_corner_ids": {"type": "integer", "minimum": 0},
+        "target_corner_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "image_plane": {
+          "type": "object",
+          "required": ["x_min_norm", "x_max_norm", "y_min_norm", "y_max_norm", "global_convex_hull_area_fraction", "centroid_x_span_norm", "centroid_y_span_norm", "frame_target_bbox_area_fraction", "scale_proxy_ratio_max_over_min_bbox_area"],
+          "properties": {
+            "x_min_norm": {"type": ["number", "null"]},
+            "x_max_norm": {"type": ["number", "null"]},
+            "y_min_norm": {"type": ["number", "null"]},
+            "y_max_norm": {"type": ["number", "null"]},
+            "global_convex_hull_area_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+            "centroid_x_span_norm": {"type": "number", "minimum": 0, "maximum": 1},
+            "centroid_y_span_norm": {"type": "number", "minimum": 0, "maximum": 1},
+            "frame_target_bbox_area_fraction": {"$ref": "#/$defs/distribution"},
+            "scale_proxy_ratio_max_over_min_bbox_area": {"type": ["number", "null"]}
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
