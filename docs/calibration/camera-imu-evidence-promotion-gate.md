@@ -68,26 +68,12 @@ The manifest freezes these JSON artifacts by path, SHA-256, byte size, and schem
 
 ```text
 dynamic_session
-eexcitation              (camera_imu_excitation)
+excitation               (camera_imu_excitation)
 target_observations      (exact pinned-Kalibr detections)
 target_coverage
 solver_quality
 import_manifest
 candidate                (camera_imu.v1)
-time_review
-repeatability
-```
-
-The implementation uses the role name `excitation`; the `eexcitation` spelling above is not used in machine data. The actual machine role set is:
-
-```text
-dynamic_session
-excitation
-target_observations
-target_coverage
-solver_quality
-import_manifest
-candidate
 time_review
 repeatability
 ```
