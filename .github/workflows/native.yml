@@ -15,6 +15,12 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+      - name: Install Python package
+        run: python -m pip install -e .
+      - name: Python package unit tests
+        run: python -m unittest discover -s tests
+      - name: Parse calibration schemas
+        run: python -c "import glob,json; [json.load(open(p, encoding='utf-8')) for p in glob.glob('calibration/schemas/*.json')]"
       - name: Characterization comparator self-test
         run: python tools/compare_nori_characterization.py --self-test
       - name: Qualification runner self-test
