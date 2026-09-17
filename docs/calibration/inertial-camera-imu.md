@@ -198,7 +198,7 @@ python tools/write_kalibr_rosbag.py --self-test
 
 The promoted-artifact validator checks geometry/provenance/time-sign invariants. Dynamic-session tooling independently re-checks upstream hashes, specimen serial consistency, absolute raw→SI conversion availability, camera topics, and timestamp monotonicity.
 
-The dynamic-session/export slice was merged through PR #48. PR run #123 and the merge-commit `main` run #124 both passed Ubuntu core, Windows core, and OpenCV/viewer/web jobs.
+The dynamic-session/export slice was merged through PR #48. Its PR and post-merge validation workflows passed Ubuntu core, Windows core, and OpenCV/viewer/web jobs.
 
 ## Live-hardware sequence
 
