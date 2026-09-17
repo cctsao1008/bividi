@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bividi stereo calibration session v1",
+  "type": "object",
+  "required": ["schema", "session_id", "provenance", "device", "capture", "target", "pairs"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo_session.v1"},
+    "session_id": {"type": "string", "minLength": 1},
+    "provenance": {"type": "object", "required": ["kind"], "properties": {"kind": {"enum": ["synthetic", "measured", "imported"]}}, "additionalProperties": true},
+    "device": {"type": "object", "required": ["model", "serial"]},
+    "capture": {"type": "object", "required": ["mode_index", "pixel_format", "width", "height", "camera_a_identity", "camera_b_identity"]},
+    "target": {"type": "object", "required": ["path", "sha256", "target_id"]},
+    "pairs": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["pair_id", "camera_a", "camera_b"]}}
+  },
+  "additionalProperties": true
+}
