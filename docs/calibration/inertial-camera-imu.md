@@ -1,9 +1,9 @@
 # Inertial and Camera↔IMU Calibration Contract
 
 Owner: Issue #47  
-Depends on: stable normalized capture from #35  
+Depends on: stable normalized capture from #35 and measured camera geometry from #8  
 Downstream consumer: #46 VIO  
-Status: pre-hardware schemas/validation/export adapter implemented; physical measurements pending
+Status: pre-hardware schemas/validation/IMU analysis/dynamic Kalibr export tooling implemented; physical measurements pending
 
 ## Boundary
 
@@ -18,23 +18,25 @@ Bividi measured session / calibration artifact
                     ↓
             external optimizer
                     ↓
-             import adapter
+             import/review adapter
                     ↓
        Bividi versioned artifact
 ```
 
-ROS/Kalibr types must not appear in Bividi Core or the live capture contract.
+ROS/Kalibr types must not appear in Bividi Core or the normal live capture contract.
 
-## Current artifact families
+## Current artifact / adapter families
 
 ```text
 bividi.calibration.imu.v1
 bividi.calibration.camera_imu.v1
+bividi.calibration.imu_session_manifest.v1
+bividi.calibration.kalibr_dynamic_session.v1
 ```
 
-Machine-readable schemas live under `calibration/schemas/`; synthetic examples live under `calibration/examples/`.
+The first two are promoted numerical calibration artifacts. The IMU session manifest binds calibration evidence before promotion. The Kalibr dynamic-session manifest binds one staged external-solver input bundle; it is not itself a calibration result.
 
-Unknown/unmeasured terms remain absent. In particular, an unknown time offset, extrinsic, bias, scale term, or noise parameter must not silently become zero.
+Unknown/unmeasured terms remain absent. An unknown time offset, extrinsic, bias, scale term, noise parameter, or camera timestamp semantic must not silently become zero/default.
 
 ## Units
 
@@ -51,7 +53,7 @@ rigid-transform translation       m
 camera↔IMU time offset            s
 ```
 
-The DECXIN embedded device timestamp counter itself remains represented in microseconds where timestamp audit artifacts need it; this is distinct from calibration parameter units.
+DECXIN embedded timestamp counters remain represented in microseconds where raw timing evidence requires it. Kalibr ROS messages use integer nanosecond header timestamps derived from those device timestamps, not host arrival time.
 
 ## Transform convention
 
@@ -64,9 +66,9 @@ transform.to_frame   = camera_reference.frame
 
 The 4×4 matrix transforms a homogeneous point expressed in `from_frame` into `to_frame` coordinates.
 
-For the first AR0234 reference rig, keep the reference camera named `camera_a` until #35 physically establishes A/B ↔ left/right identity. Do not encode an unmeasured left/right assumption in calibration artifacts.
+For the AR0234 reference rig, keep the reference camera named `camera_a` until #35 physically establishes A/B ↔ left/right identity. A valid transform must contain a proper right-handed rotation and homogeneous last row `[0, 0, 0, 1]`.
 
-A valid transform must contain a proper right-handed rotation (orthonormal, determinant +1) and homogeneous last row `[0, 0, 0, 1]`.
+Kalibr revision `1f60227442d25e36365ef5f72cd80b9666d73467` reports `T_ci` as **imu0 → cam_i**. Numeric import into Bividi is direct only when the named Bividi IMU/camera frames are the same frames used by the exported Kalibr session.
 
 ## Camera↔IMU time-offset convention
 
@@ -75,6 +77,8 @@ The sign is explicit and fixed in v1:
 ```text
 t_imu_s = t_camera_reference_s + offset_s
 ```
+
+Kalibr uses the same sign equation for `timeshift_cam_imu`.
 
 The camera timestamp semantic must also be named:
 
@@ -85,11 +89,11 @@ exposure_end
 frame_timestamp
 ```
 
-DECXIN exposes both exposure start and exposure end. Co-packaging camera and IMU timestamps does not prove that either one is already the calibrated visual timestamp reference, so the selected semantic must remain explicit through dataset export and solver import.
+DECXIN exposes exposure start/end. Co-packaging camera and IMU timestamps does not prove which visual timestamp is appropriate, so dynamic export requires an explicit selection and records it in the session manifest. A Kalibr time shift cannot be imported merely because the sign matches; the timestamp semantic must match too.
 
-## Kalibr mapping
+## Kalibr IMU mapping
 
-Kalibr's `imu.yaml` expects these fields:
+Kalibr `imu.yaml` expects:
 
 ```text
 accelerometer_noise_density
@@ -100,85 +104,99 @@ rostopic
 update_rate
 ```
 
-`tools/export_kalibr_imu.py` maps only explicit Bividi measurements/imported values:
+`tools/export_kalibr_imu.py` maps only explicit Bividi measurements/imported values. For `update_rate`, timestamp-derived `timing.effective_rate_hz` is preferred, then `imu.sample_rate_hz_measured`; the nominal rate is not substituted. Synthetic artifacts are refused by default.
+
+## Dynamic camera+IMU session mapping
+
+When hardware evidence exists, `bividi-nori-calib-record` records one synchronized motion session:
 
 ```text
-Bividi noise.accelerometer_noise_density_m_s2_sqrt_hz
-    → Kalibr accelerometer_noise_density
-
-Bividi noise.accelerometer_bias_random_walk_m_s3_sqrt_hz
-    → Kalibr accelerometer_random_walk
-
-Bividi noise.gyroscope_noise_density_rad_s_sqrt_hz
-    → Kalibr gyroscope_noise_density
-
-Bividi noise.gyroscope_bias_random_walk_rad_s2_sqrt_hz
-    → Kalibr gyroscope_random_walk
+camera_a/camera_b lossless mono PNG
+frames.csv with sequence + ES + EE + host/SDK provenance
+imu.csv with complete raw IMU samples + device timestamps
+capture.json
 ```
 
-For `update_rate`, the exporter prefers timestamp-derived `timing.effective_rate_hz`; if absent it uses `imu.sample_rate_hz_measured`. It deliberately refuses to substitute the nominal rate.
+Recording deliberately does not choose a visual timestamp reference and does not scale raw IMU counts.
 
-The exporter also refuses synthetic artifacts by default. `--allow-synthetic` exists only for fixtures and adapter testing.
-
-Example:
-
-```bash
-python tools/export_kalibr_imu.py \
-  calibration/measured/<imu-artifact>.json \
-  --rostopic /imu0 \
-  --output imu.yaml \
-  --manifest-out imu.export.json
-```
-
-The sidecar records the source artifact hash, calibration ID, exact field mapping, update-rate source, and exporter revision when available.
-
-## Kalibr camera↔IMU mapping
-
-Kalibr uses `T_cam_imu` for the transformation from IMU coordinates into camera coordinates. That matches the Bividi v1 transform directly **only when**:
+`tools/prepare_kalibr_dynamic_session.py` then requires:
 
 ```text
-Bividi from_frame == Kalibr IMU frame
-Bividi to_frame   == the corresponding Kalibr camera frame
+one dynamic capture
+one compatible measured IMU session manifest
+one promoted measured IMU artifact
+one measured #8/Kalibr-compatible camchain.yaml
+one explicit ES/midpoint/EE choice
+one explicit AprilGrid definition
 ```
 
-Kalibr's `timeshift_cam_imu` convention is:
+The raw IMU conversion is derived from hash-bound experiment evidence:
 
 ```text
-t_imu = t_cam + shift
+accelerometer:
+  six-position bias_raw_counts
+  target_g_per_raw_count_matrix × 9.80665
+
+gyroscope:
+  controlled-turn bias_raw_counts
+  target_rad_s_per_raw_count_matrix
 ```
 
-Bividi v1 deliberately uses the same sign equation. A future importer/exporter can therefore map the numeric value directly only after verifying that the Bividi `camera_time_reference` is the same image timestamp semantic used in the exported Kalibr dataset.
+The gyro matrix must come from a controlled-rotation experiment with a trusted angle reference. If absolute scale is unavailable, dynamic preparation fails instead of falling back to the DECXIN demo's nominal range.
 
-Do not map a time shift merely because the sign matches; timestamp semantic and dataset construction still matter.
-
-## What is intentionally not exported yet
-
-A complete Kalibr camera/IMU session also needs camera intrinsics/extrinsics, target metadata, images, IMU samples, and a ROS-bag-compatible dataset. The camera chain depends on measured #8 stereo calibration and verified #35 camera identity.
-
-Therefore this pre-hardware phase does **not** fabricate:
+The conversion equation is recorded in the adapter manifest:
 
 ```text
-camchain.yaml intrinsics
-camera A/B → left/right identity
-physical T_cam_imu
-physical timeshift_cam_imu
-measured IMU noise
-ROS bag data
+target_si = matrix * (raw_counts - bias_raw_counts)
 ```
 
-Those appear only after their upstream measurements exist.
+## Kalibr timestamp construction
+
+Kalibr's image and IMU dataset readers at the pinned revision sort/read sensor time from ROS `data.header.stamp`.
+
+The staged export maps:
+
+```text
+camera exposure_start:
+    t_ns = ES_us * 1000
+
+camera exposure_midpoint:
+    t_ns = (ES_us + EE_us) * 500
+
+camera exposure_end:
+    t_ns = EE_us * 1000
+
+IMU:
+    t_ns = imu_extended_time_us * 1000
+```
+
+`host_receive_monotonic_ns` remains acquisition provenance and is never silently substituted as camera/IMU measurement time.
+
+## ROS bag boundary
+
+Kalibr's IMU-camera CLI requires `--bag`. `tools/write_kalibr_rosbag.py` is an optional external adapter that publishes:
+
+```text
+/cam0/image_raw   sensor_msgs/Image (mono8)
+/cam1/image_raw   sensor_msgs/Image (mono8)
+/imu0             sensor_msgs/Imu
+```
+
+The adapter imports ROS1 modules lazily; normal Bividi CI and Bividi Core do not depend on ROS1. Header stamp and bag record time use the same staged sensor timestamp. Camera/IMU indexes are streamed/merged, so the bag writer does not need to load an entire high-rate recording into memory.
+
+See `docs/calibration/kalibr-dynamic-session.md` for the operational workflow and exact source-contract audit.
 
 ## Validation
 
 Use:
 
 ```bash
-python tools/validate_calibration_artifact.py <artifact.json>
+python tools/validate_calibration_artifact.py <promoted-artifact.json>
+python tools/prepare_kalibr_dynamic_session.py --self-test
+python tools/write_kalibr_rosbag.py --self-test
 ```
 
-The dependency-free validator checks the high-value structural and semantic invariants in normal CI, including proper rigid-transform geometry, explicit transform direction, time-offset sign definition, provenance, units/positive noise values, and right-handed frame declarations.
-
-The JSON Schema files remain the durable machine-readable contract. A standards-compliant JSON Schema implementation may additionally validate them in richer environments.
+The promoted-artifact validator checks geometry/provenance/time-sign invariants. Dynamic-session tooling independently re-checks upstream hashes, specimen serial consistency, absolute raw→SI conversion availability, camera topics, and timestamp monotonicity.
 
 ## Live-hardware sequence
 
@@ -193,19 +211,23 @@ long stationary recording
     ↓
 noise / random-walk characterization
     ↓
-axis convention verification
+six-position + controlled-rotation frame/scale evidence
+    ↓
+IMU provenance/config-consistency review
     ↓
 measured IMU artifact
     ↓
-Kalibr imu.yaml export
+measured #8 camera chain
     ↓
-dynamic camera+IMU calibration session
+dynamic stereo+IMU recording
+    ↓
+Kalibr dynamic-session staging + ROS bag
     ↓
 Kalibr spatial + temporal solve
     ↓
-protocol/timestamp cross-check
+protocol/timestamp cross-check + solver-quality review
     ↓
-measured/imported camera↔IMU artifact
+imported/measured camera↔IMU artifact
     ↓
 #46 VIO
 ```
