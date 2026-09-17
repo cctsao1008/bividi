@@ -7,25 +7,29 @@ Status: hardware-independent importer/review tooling implemented; physical AR023
 
 ## Purpose
 
-A Kalibr solve is external evidence, not automatically a Bividi calibration artifact. This layer makes the import boundary explicit:
+A Kalibr solve is external evidence, not automatically a Bividi calibration artifact. This layer makes the import/review boundary explicit:
 
 ```text
 provenance-bound dynamic session
         +
 Kalibr *-camchain-imucam.yaml
         +
-optional Kalibr report
-            ↓
-import_kalibr_camera_imu.py
-            ↓
-validated camera↔IMU artifact candidate
-        + import sidecar
-            ↓
-review_camera_imu_time_offset.py
-            ↓
-protocol/timestamp evidence review
-            ↓
-manual/requirements-based promotion decision
+Kalibr *-results-imucam.txt
+            |
+            +--> import_kalibr_camera_imu.py
+            |       validated camera↔IMU artifact candidate
+            |       + import sidecar
+            |
+            +--> analyze_kalibr_solver_quality.py
+            |       normalized + physical residual evidence
+            |
+            +--> review_camera_imu_time_offset.py
+                    protocol/timestamp evidence review
+                        |
+                        +--> compare_camera_imu_calibrations.py
+                                repeated-session consistency
+                                    ↓
+                         manual/requirements-based promotion decision
 ```
 
 ## Exact Kalibr fields
@@ -45,6 +49,8 @@ t_imu = t_cam + timeshift_cam_imu
 
 This matches Bividi's v1 numeric sign only when the same camera timestamp semantic is preserved.
 
+The same pinned Kalibr source writes solver residual statistics into `*-results-imucam.txt` through `IccUtil.py::printErrorStatistics`. Bividi parses those statistics separately rather than pretending the YAML transform alone proves solver quality.
+
 ## Import
 
 Example:
@@ -56,7 +62,7 @@ python tools/import_kalibr_camera_imu.py \
   --camera cam0 \
   --camera-axes "+X right, +Y down, +Z forward; verified for this camera/Kalibr convention" \
   --calibration-id ar0234-camA-imu-001 \
-  --solver-report kalibr_dynamic-report-imucam.pdf \
+  --solver-report kalibr_dynamic-results-imucam.txt \
   --external-container "<pinned image digest>" \
   --output ar0234-camA-imu-001.json
 ```
@@ -86,6 +92,41 @@ final Bividi camera-IMU artifact invariants
 It writes an import sidecar recording the exact dynamic-session hash, Kalibr-result hash, optional solver-report hash, Kalibr revision/container, selected camera, transform/time definitions, and candidate status.
 
 A valid import is still labelled for review. The YAML transform alone does not provide enough quality evidence to claim an accurate physical calibration.
+
+## Solver quality evidence
+
+Analyze the exact Kalibr text report against the same prepared dynamic session:
+
+```bash
+python tools/analyze_kalibr_solver_quality.py \
+  ar0234_kalibr_001/session.json \
+  kalibr_dynamic-results-imucam.txt \
+  --output-prefix ar0234_kalibr_001/solver-quality
+```
+
+The tool preserves:
+
+```text
+Normalized Residuals
+  cam0/cam1 reprojection
+  imu0 gyroscope
+  imu0 accelerometer
+
+Residuals
+  reprojection [px]
+  gyroscope [rad/s]
+  accelerometer [m/s^2]
+```
+
+with Kalibr's printed mean, median, population standard deviation, plus a derived residual-norm RMS. The dynamic-session and text-report SHA-256 values are retained in `bividi.calibration.kalibr_solver_quality.v1`.
+
+For the Bividi stereo workflow, missing expected residual evidence or `no corners` on `cam0`/`cam1` is a structural failure. Otherwise, with no explicit lab/product limits, status remains:
+
+```text
+EVIDENCE_ONLY_NO_THRESHOLDS
+```
+
+See `docs/calibration/kalibr-solver-quality-gate.md` for the exact pinned source contract and optional requirement-based gates.
 
 ## Temporal evidence review
 
@@ -150,7 +191,17 @@ small nearest residual after shift
 proof that the Kalibr offset is physically correct
 ```
 
-The review is intended to catch gross mistakes such as:
+Likewise:
+
+```text
+small Kalibr solver residuals
+    !=
+proof that the physical calibration is accurate
+```
+
+The solver-quality report measures optimizer fit. Temporal review catches gross clock/sign/semantic mistakes. Repeatability measures cross-session stability. These evidence classes remain separate.
+
+The temporal review is intended to catch gross mistakes such as:
 
 ```text
 wrong sign
@@ -170,8 +221,9 @@ Final acceptance still needs Kalibr solver quality, target detection quality, mo
 - `timeshift_cam_imu` is imported only with the dynamic session's exact camera timestamp semantic.
 - Imported artifacts remain tied to the dynamic-session SHA-256.
 - Kalibr result/report hashes are retained in the import sidecar/review notes.
+- Solver residual quality is retained as its own hash-bound evidence artifact rather than collapsed into an unsupported accuracy claim.
 - Camera axes are operator-declared/verified, never silently invented.
 - Camera A/B are not renamed left/right without #35 physical evidence.
-- No default temporal tolerance is invented.
+- No default solver or temporal tolerance is invented.
 
 Related: #8, #35, #47, #46.
