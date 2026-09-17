@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/camera-imu-excitation-v1.schema.json",
+  "title": "Bividi camera-IMU dynamic excitation evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "created_utc", "source", "session_context", "coverage",
+    "cameras", "imu", "interpretation", "assessment", "provenance"
+  ],
+  "properties": {
+    "schema": {"const": "bividi.calibration.camera_imu_excitation.v1"},
+    "created_utc": {"type": "string", "format": "date-time"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dynamic_session", "camera_a_csv", "camera_b_csv", "imu_csv"],
+      "properties": {
+        "dynamic_session": {"$ref": "#/$defs/sessionSource"},
+        "camera_a_csv": {"$ref": "#/$defs/fileSource"},
+        "camera_b_csv": {"$ref": "#/$defs/fileSource"},
+        "imu_csv": {"$ref": "#/$defs/fileSource"}
+      }
+    },
+    "session_context": {"type": "object"},
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "union_start_ns", "union_end_ns", "union_duration_s",
+        "shared_start_ns", "shared_end_ns", "shared_duration_s",
+        "shared_fraction_of_union"
+      ],
+      "properties": {
+        "union_start_ns": {"type": "integer", "minimum": 0},
+        "union_end_ns": {"type": "integer", "minimum": 0},
+        "union_duration_s": {"type": "number", "minimum": 0},
+        "shared_start_ns": {"type": "integer", "minimum": 0},
+        "shared_end_ns": {"type": "integer", "minimum": 0},
+        "shared_duration_s": {"type": "number", "minimum": 0},
+        "shared_fraction_of_union": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "cameras": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["camera_a", "camera_b", "stereo_timestamp_identity"],
+      "properties": {
+        "camera_a": {"$ref": "#/$defs/streamSummary"},
+        "camera_b": {"$ref": "#/$defs/streamSummary"},
+        "stereo_timestamp_identity": {"type": "boolean"}
+      }
+    },
+    "imu": {
+      "type": "object",
+      "required": [
+        "count", "first_timestamp_ns", "last_timestamp_ns", "duration_s",
+        "effective_rate_hz", "interval_s", "gyroscope", "specific_force",
+        "specific_force_variation"
+      ]
+    },
+    "interpretation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "target_detection_coverage", "notes"],
+      "properties": {
+        "claim": {"const": "excitation_and_coverage_proxy_evidence_not_formal_observability_proof"},
+        "target_detection_coverage": {"const": "not_evaluated_from_staged_index_csv"},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "structural_findings", "gates", "threshold_policy"],
+      "properties": {
+        "status": {"enum": ["PASS", "FAIL", "EVIDENCE_ONLY_NO_THRESHOLDS"]},
+        "structural_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["severity", "code", "message"],
+            "properties": {
+              "severity": {"enum": ["error", "warning"]},
+              "code": {"type": "string", "minLength": 1},
+              "message": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "observed", "threshold", "comparison", "unit", "status"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "observed": {"type": "number"},
+              "threshold": {"type": "number", "minimum": 0},
+              "comparison": {"enum": [">=", "<="]},
+              "unit": {"type": "string", "minLength": 1},
+              "limiting_source": {"type": "string", "minLength": 1},
+              "status": {"enum": ["PASS", "FAIL"]}
+            }
+          }
+        },
+        "threshold_policy": {"type": "string", "minLength": 1}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version"],
+      "properties": {
+        "tool": {"const": "analyze_camera_imu_excitation.py"},
+        "tool_version": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "fileSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "sessionSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "session_id"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "session_id": {"type": ["string", "null"]}
+      }
+    },
+    "scalarSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "min", "max", "mean", "std", "rms", "p50", "p95", "p99"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1},
+        "min": {"type": "number"},
+        "max": {"type": "number"},
+        "mean": {"type": "number"},
+        "std": {"type": "number", "minimum": 0},
+        "rms": {"type": "number", "minimum": 0},
+        "p50": {"type": "number"},
+        "p95": {"type": "number"},
+        "p99": {"type": "number"}
+      }
+    },
+    "streamSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "first_timestamp_ns", "last_timestamp_ns", "duration_s", "effective_rate_hz", "interval_s"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 2},
+        "first_timestamp_ns": {"type": "integer", "minimum": 0},
+        "last_timestamp_ns": {"type": "integer", "minimum": 0},
+        "duration_s": {"type": "number", "exclusiveMinimum": 0},
+        "effective_rate_hz": {"type": "number", "exclusiveMinimum": 0},
+        "interval_s": {"$ref": "#/$defs/scalarSummary"}
+      }
+    }
+  }
+}
