@@ -138,7 +138,13 @@ if(BIVIDI_WITH_NORI_SDK AND TARGET bividi_nori AND TARGET bividi_nori_opencv)
     target_link_libraries(bividi-nori-imu-record PRIVATE bividi_nori bividi_nori_opencv)
     target_compile_features(bividi-nori-imu-record PRIVATE cxx_std_17)
 
-    message(STATUS "Bividi Nori live DECXIN decode/session/characterization/IMU-record surface enabled")
+    if(TARGET bividi_opencv)
+        add_executable(bividi-nori-calib-record apps/bividi_nori_calib_record.cpp)
+        target_link_libraries(bividi-nori-calib-record PRIVATE bividi_nori bividi_nori_opencv bividi_opencv)
+        target_compile_features(bividi-nori-calib-record PRIVATE cxx_std_17)
+    endif()
+
+    message(STATUS "Bividi Nori live DECXIN decode/session/characterization/calibration-record surface enabled")
 endif()
 
 if(BIVIDI_BUILD_VIEWER)
@@ -224,6 +230,10 @@ if(BIVIDI_BUILD_TESTS)
         add_executable(bividi_nori_decxin_tests tests/native/test_nori_decxin.cpp)
         target_link_libraries(bividi_nori_decxin_tests PRIVATE bividi_nori_opencv)
         add_test(NAME bividi_nori_decxin_tests COMMAND bividi_nori_decxin_tests)
+
+        add_library(bividi_nori_calib_record_compilecheck OBJECT apps/bividi_nori_calib_record.cpp)
+        target_include_directories(bividi_nori_calib_record_compilecheck PRIVATE include ${OpenCV_INCLUDE_DIRS})
+        target_compile_features(bividi_nori_calib_record_compilecheck PRIVATE cxx_std_17)
     endif()
 
     if(TARGET bividi-viewer)
