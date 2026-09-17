@@ -34,6 +34,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`calibration/imu-six-position-axis-lab.md`](calibration/imu-six-position-axis-lab.md) — six-pose gravity experiment for accelerometer axis/sign mapping, counts-per-g scale sanity, affine coupling evidence, and handedness parity
 - [`calibration/imu-gyro-rotation-lab.md`](calibration/imu-gyro-rotation-lab.md) — controlled +/-XYZ turns for gyro bias-corrected integration, axis/sign mapping, pair symmetry, optional rate-scale evidence, and accel↔gyro frame comparison
 - [`calibration/imu-calibration-provenance-gate.md`](calibration/imu-calibration-provenance-gate.md) — hash-bound session manifest tying specimen, SDK/firmware, camera mode, IMU range/ODR/filter declarations, raw traces, and analysis reports before calibration promotion
+- [`calibration/imu-config-consistency-lab.md`](calibration/imu-config-consistency-lab.md) — measured-vs-declared accel range, gyro range, and device-timestamp ODR consistency checks without pretending to read sensor registers
 
 ## Research / interoperability
 
