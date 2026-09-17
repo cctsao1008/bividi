@@ -26,8 +26,11 @@ import_kalibr_camera_imu.py            T_cam_imu + timeshift import
 analyze_kalibr_solver_quality.py       normalized/physical optimizer residual evidence
 review_camera_imu_time_offset.py       device-time temporal sanity evidence
 compare_camera_imu_calibrations.py     independent-session repeatability evidence
+camera_imu_calibration_provenance.py   final hash-bound integrity/review/promotion gate
 ```
 
 The target-observation exporter is the only one of the two visual-coverage tools that requires the external Kalibr runtime; the coverage analyzer is standard-library-only. The exporter deliberately reuses Kalibr's `GridDetector` observation surface rather than introducing an independent AprilTag detector with potentially different corner semantics.
 
 Inertial excitation, target/image-plane coverage, residual fit, temporal plausibility, and repeatability are related but are not interchangeable claims. The excitation and coverage analyzers report evidence/proxies rather than claiming formal estimator observability.
+
+The final provenance gate does not invent or duplicate numeric limits. Component analyzers own their explicit thresholds; the `promotion` profile only accepts evidence that is hash-consistent, explicitly gated, `PASS`, and tied to a named lab/product acceptance policy.
