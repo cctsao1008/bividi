@@ -21,9 +21,10 @@ schemas/camera-imu-excitation-v1.schema.json
 schemas/kalibr-target-observations-v1.schema.json
 schemas/kalibr-target-coverage-v1.schema.json
 schemas/camera-imu-evidence-manifest-v1.schema.json
+schemas/camera-imu-physical-campaign-v1.schema.json
 ```
 
-The first two schemas are promoted numerical calibration artifacts. The IMU session schema and camera↔IMU evidence manifest are provenance/evidence contracts used around promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality, dynamic-excitation, Kalibr target-observation, and target-coverage schemas describe review evidence and likewise are not promoted calibration results. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
+The first two schemas are promoted numerical calibration artifacts. The IMU session schema and camera↔IMU evidence manifest are provenance/evidence contracts used around promotion. The physical-campaign schema is a specimen-specific execution plan; it is not numerical calibration evidence. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality, dynamic-excitation, Kalibr target-observation, and target-coverage schemas describe review evidence and likewise are not promoted calibration results. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
 
 ## Evidence before artifact promotion
 
@@ -52,6 +53,7 @@ tools/analyze_kalibr_solver_quality.py    Kalibr normalized/physical residual ev
 tools/review_camera_imu_time_offset.py    device-time temporal evidence review
 tools/compare_camera_imu_calibrations.py  multi-session spatial/temporal repeatability
 tools/camera_imu_calibration_provenance.py final evidence integrity/review/promotion gate
+tools/plan_camera_imu_physical_campaign.py specimen-specific physical campaign plan + artifact audit
 ```
 
 Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, staged Kalibr input bundle, dynamic-excitation report, Kalibr target-coverage report, and Kalibr residual-quality report are not automatically promoted calibration values.
@@ -212,6 +214,16 @@ The promotion gate owns no numerical thresholds. Thresholds remain with the evid
 
 See `docs/calibration/camera-imu-evidence-promotion-gate.md`.
 
+## Physical camera↔IMU campaign planner
+
+`tools/plan_camera_imu_physical_campaign.py` is the execution layer for the live-hardware phase. It creates a specimen-specific `campaign.json` plus `RUNBOOK.md` that orders the existing #47 tools from IMU characterization through independent dynamic sessions, external Kalibr solves, repeatability, and final promotion.
+
+The planner deliberately does not acquire data, choose Allan fit windows, define target/excitation thresholds, or promote calibration values. Its `audit` command only checks whether expected artifacts exist and whether planned JSON outputs expose the expected schema. Hash integrity, numerical quality, and policy compliance remain owned by the existing provenance/evidence tools.
+
+The campaign schema requires at least two dynamic sessions because repeatability needs more than one independent solve, but the exact session count is operator-selected rather than a hidden product requirement.
+
+See `docs/calibration/camera-imu-physical-campaign.md`.
+
 See also:
 
 ```text
@@ -222,6 +234,8 @@ docs/calibration/kalibr-target-coverage-lab.md
 docs/calibration/kalibr-result-import-review.md
 docs/calibration/kalibr-solver-quality-gate.md
 docs/calibration/camera-imu-repeatability.md
+docs/calibration/camera-imu-evidence-promotion-gate.md
+docs/calibration/camera-imu-physical-campaign.md
 ```
 
 ## Provenance is mandatory
