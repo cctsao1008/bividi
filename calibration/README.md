@@ -24,15 +24,16 @@ The first two schemas are promoted numerical calibration artifacts. The IMU sess
 Issue #47 deliberately separates measurement evidence from a promoted calibration artifact. Current hardware-independent tooling includes:
 
 ```text
-bividi-nori-imu-record                 lossless raw IMU + ES/EE trace
+bividi-nori-imu-record                    lossless raw IMU + ES/EE trace
 
-tools/audit_imu_timing.py              device-time cadence / gap / camera↔IMU timing audit
-tools/analyze_imu_stationary.py        stationary raw bias/variance evidence
-tools/analyze_imu_allan.py             long-run Allan/noise characterization
-tools/analyze_imu_six_position.py      six-pose accelerometer axis/sign/scale sanity
-tools/analyze_imu_gyro_rotation.py     controlled-turn gyro axis/sign/scale sanity
-tools/imu_calibration_provenance.py    session compatibility + SHA-256 promotion gate
-tools/export_kalibr_imu.py             reviewed IMU artifact -> Kalibr imu.yaml adapter
+tools/audit_imu_timing.py                 device-time cadence / gap / camera↔IMU timing audit
+tools/analyze_imu_stationary.py           stationary raw bias/variance evidence
+tools/analyze_imu_allan.py                long-run Allan/noise characterization
+tools/analyze_imu_six_position.py         six-pose accelerometer axis/sign/scale sanity
+tools/analyze_imu_gyro_rotation.py        controlled-turn gyro axis/sign/scale sanity
+tools/imu_calibration_provenance.py       session compatibility + SHA-256 promotion gate
+tools/analyze_imu_config_consistency.py   declared range/ODR vs measured-response consistency
+tools/export_kalibr_imu.py                reviewed IMU artifact -> Kalibr imu.yaml adapter
 ```
 
 Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, and Allan-derived Kalibr candidates are not automatically written into `bividi.calibration.imu.v1`.
@@ -73,6 +74,29 @@ python tools/imu_calibration_provenance.py verify \
 The promotion profile requires the complete stationary + Allan + six-position + controlled-rotation evidence set, non-placeholder configuration/device metadata, measured provenance, and unchanged file hashes. A provenance-gate PASS means the evidence bundle is compatible and immutable according to recorded metadata; it does not replace numerical calibration-quality review.
 
 See `docs/calibration/imu-calibration-provenance-gate.md` for role names and creation examples.
+
+## Configuration consistency gate
+
+A provenance manifest proves that evidence belongs to the same **declared** configuration; it does not prove that the declaration matches the physical sensor state.
+
+`tools/analyze_imu_config_consistency.py` closes part of that gap by comparing:
+
+```text
+six-position measured counts/g
+    vs declared accelerometer range
+
+known-angle controlled-turn gyro sensitivity
+    vs declared gyroscope range
+
+device-timestamp effective sample rates
+    vs declared ODR
+```
+
+The tool re-verifies every bound analysis SHA-256 before using it. By default it is evidence-only and reports measured-vs-declared deltas without inventing acceptance thresholds. Explicit range/ODR tolerances can be supplied later when justified by requirements or measured baselines.
+
+Filter declarations remain provenance only: scale and cadence experiments cannot uniquely identify filter register settings.
+
+See `docs/calibration/imu-config-consistency-lab.md`.
 
 ## Provenance is mandatory
 
