@@ -51,6 +51,8 @@ jobs:
         run: python tools/write_ros2_calibration_mcap.py --self-test
       - name: Kalibr camera-IMU importer self-test
         run: python tools/import_kalibr_camera_imu.py --self-test
+      - name: Kalibr solver quality gate self-test
+        run: python tools/analyze_kalibr_solver_quality.py --self-test
       - name: Camera-IMU temporal evidence review self-test
         run: python tools/review_camera_imu_time_offset.py --self-test
       - name: Camera-IMU repeatability comparator self-test
