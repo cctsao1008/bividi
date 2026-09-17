@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/camera-imu-evidence-manifest-v1.schema.json",
+  "title": "Bividi camera-IMU calibration evidence manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "manifest_id",
+    "calibration_id",
+    "created_utc",
+    "policy_source",
+    "evidence",
+    "supporting_files",
+    "compatibility",
+    "provenance",
+    "guardrails"
+  ],
+  "properties": {
+    "schema": {"const": "bividi.calibration.camera_imu_evidence_manifest.v1"},
+    "manifest_id": {"type": "string", "minLength": 1},
+    "calibration_id": {"type": "string", "minLength": 1},
+    "created_utc": {"type": "string", "minLength": 1},
+    "policy_source": {"type": ["string", "null"]},
+    "evidence": {
+      "type": "array",
+      "minItems": 9,
+      "items": {"$ref": "#/$defs/fileRecord"}
+    },
+    "supporting_files": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/fileRecord"}
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "dynamic_session_sha256",
+        "kalibr_backend",
+        "kalibr_revision",
+        "camera_id",
+        "kalibr_camera",
+        "camera_frame",
+        "imu_frame",
+        "camera_time_reference",
+        "time_shift_definition",
+        "candidate_calibration_id",
+        "candidate_sha256"
+      ],
+      "properties": {
+        "dynamic_session_sha256": {"$ref": "#/$defs/sha256"},
+        "session_id": {},
+        "kalibr_backend": {"const": "ethz-asl/kalibr"},
+        "kalibr_revision": {"type": "string", "minLength": 1},
+        "camera_id": {"type": "string", "minLength": 1},
+        "kalibr_camera": {"type": "string", "pattern": "^cam[0-9]+$"},
+        "camera_frame": {"type": "string", "minLength": 1},
+        "imu_frame": {"type": "string", "minLength": 1},
+        "camera_time_reference": {"enum": ["exposure_start", "exposure_midpoint", "exposure_end"]},
+        "time_shift_definition": {"const": "t_imu_s = t_camera_reference_s + offset_s"},
+        "candidate_calibration_id": {"type": "string", "minLength": 1},
+        "candidate_sha256": {"$ref": "#/$defs/sha256"},
+        "device_serial": {}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["tool", "tool_version"],
+      "properties": {
+        "tool": {"const": "camera_imu_calibration_provenance.py"},
+        "tool_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "guardrails": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "fileRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "sha256", "bytes"],
+      "properties": {
+        "role": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "schema": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

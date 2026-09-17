@@ -20,9 +20,10 @@ schemas/kalibr-solver-quality-v1.schema.json
 schemas/camera-imu-excitation-v1.schema.json
 schemas/kalibr-target-observations-v1.schema.json
 schemas/kalibr-target-coverage-v1.schema.json
+schemas/camera-imu-evidence-manifest-v1.schema.json
 ```
 
-The first two schemas are promoted numerical calibration artifacts. The IMU session schema is a provenance/evidence manifest used before promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality, dynamic-excitation, Kalibr target-observation, and target-coverage schemas describe review evidence and likewise are not promoted calibration results. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
+The first two schemas are promoted numerical calibration artifacts. The IMU session schema and camera↔IMU evidence manifest are provenance/evidence contracts used around promotion. The Kalibr dynamic-session schema is an **adapter manifest** for one staged external solver input bundle; it is not a promoted camera↔IMU result. The solver-quality, dynamic-excitation, Kalibr target-observation, and target-coverage schemas describe review evidence and likewise are not promoted calibration results. These contracts are intentionally independent of ROS/Kalibr runtime types in Bividi Core. External solver formats remain adapters, not Bividi's persistent public calibration schema.
 
 ## Evidence before artifact promotion
 
@@ -50,6 +51,7 @@ tools/import_kalibr_camera_imu.py         strict Kalibr T_cam_imu/time-shift imp
 tools/analyze_kalibr_solver_quality.py    Kalibr normalized/physical residual evidence + explicit gates
 tools/review_camera_imu_time_offset.py    device-time temporal evidence review
 tools/compare_camera_imu_calibrations.py  multi-session spatial/temporal repeatability
+tools/camera_imu_calibration_provenance.py final evidence integrity/review/promotion gate
 ```
 
 Analyzer outputs are evidence/candidates until specimen identity, capture configuration, frame convention, units, method, and review provenance justify promotion into a versioned artifact. In particular, the six-position affine gravity model, controlled-turn gyro sensitivity candidate, Allan-derived noise candidates, staged Kalibr input bundle, dynamic-excitation report, Kalibr target-coverage report, and Kalibr residual-quality report are not automatically promoted calibration values.
@@ -190,7 +192,27 @@ The stereo workflow requires residual evidence for `cam0`, `cam1`, and `imu0`; `
 
 Solver residuals measure optimizer fit, not calibration truth. They therefore stay independent from temporal review, repeatability, excitation/observability judgment, target coverage, protocol-level timing evidence, and downstream VIO validation.
 
-See:
+## Final camera↔IMU evidence promotion gate
+
+`tools/camera_imu_calibration_provenance.py` closes the hardware-independent #47 tooling chain. It binds the dynamic session, excitation report, exact Kalibr target observations, target-coverage report, solver-quality report, import manifest, candidate calibration artifact, temporal review, repeatability report, and external Kalibr result files into `bividi.calibration.camera_imu_evidence_manifest.v1`.
+
+The gate re-hashes every bound file and verifies nested cross-links: session identity, backend revision, camera mapping, transform frames, timestamp semantics, candidate hash, result YAML/residual text, and membership of the selected candidate in the repeatability campaign.
+
+Profiles have intentionally different meanings:
+
+```text
+integrity   hashes/schemas/cross-links only
+review      integrity + no component evidence may be FAIL
+promotion   review + every quality report must be explicit PASS
+            + every PASS must contain explicit gates
+            + a named lab/product policy_source is required
+```
+
+The promotion gate owns no numerical thresholds. Thresholds remain with the evidence-producing tools; the final gate only verifies that the recorded policy was actually applied and passed. `PROMOTION_READY` is therefore a controlled release disposition, not independent proof of physical calibration accuracy.
+
+See `docs/calibration/camera-imu-evidence-promotion-gate.md`.
+
+See also:
 
 ```text
 docs/calibration/kalibr-dynamic-session.md

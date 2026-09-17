@@ -42,6 +42,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`calibration/kalibr-result-import-review.md`](calibration/kalibr-result-import-review.md) — strict `T_cam_imu` / `timeshift_cam_imu` import, solver/session provenance, and device-time temporal evidence review without turning nearest-sample geometry into a fake offset estimator
 - [`calibration/kalibr-solver-quality-gate.md`](calibration/kalibr-solver-quality-gate.md) — pinned Kalibr residual parser, normalized/physical fit evidence, stereo completeness checks, and optional requirement-based solver-quality gates
 - [`calibration/camera-imu-repeatability.md`](calibration/camera-imu-repeatability.md) — repeated-solve SE(3)/time-offset consistency, compatibility gating, and optional requirement-based repeatability thresholds
+- [`calibration/camera-imu-evidence-promotion-gate.md`](calibration/camera-imu-evidence-promotion-gate.md) — final hash-bound evidence graph with integrity/review/promotion profiles and explicit policy-controlled release to #46
 
 ## Research / interoperability
 
