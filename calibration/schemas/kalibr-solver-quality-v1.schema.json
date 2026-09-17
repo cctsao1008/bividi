@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/kalibr-solver-quality-v1.schema.json",
+  "title": "Bividi Kalibr IMU-camera solver quality evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "created_utc", "source_contract", "source", "expected",
+    "residuals", "assessment", "provenance", "notes"
+  ],
+  "properties": {
+    "schema": {"const": "bividi.calibration.kalibr_solver_quality.v1"},
+    "created_utc": {"type": "string", "format": "date-time"},
+    "source_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend", "verified_revision", "session_revision",
+        "revision_mismatch_allowed", "source", "statistics_semantics"
+      ],
+      "properties": {
+        "backend": {"const": "ethz-asl/kalibr"},
+        "verified_revision": {"type": "string", "minLength": 1},
+        "session_revision": {"type": "string", "minLength": 1},
+        "revision_mismatch_allowed": {"type": "boolean"},
+        "source": {"type": "string", "minLength": 1},
+        "statistics_semantics": {"type": "string", "minLength": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dynamic_session", "results_imucam_txt"],
+      "properties": {
+        "dynamic_session": {"$ref": "#/$defs/sessionSource"},
+        "results_imucam_txt": {"$ref": "#/$defs/fileSource"}
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cameras", "imus"],
+      "properties": {
+        "cameras": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^cam[0-9]+$"}
+        },
+        "imus": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^imu[0-9]+$"}
+        }
+      }
+    },
+    "residuals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalized", "physical"],
+      "properties": {
+        "normalized": {"$ref": "#/$defs/residualSection"},
+        "physical": {"$ref": "#/$defs/residualSection"}
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "structural_findings", "gates", "threshold_policy"],
+      "properties": {
+        "status": {"enum": ["PASS", "FAIL", "EVIDENCE_ONLY_NO_THRESHOLDS"]},
+        "structural_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["severity", "code", "message"],
+            "properties": {
+              "severity": {"enum": ["error", "warning"]},
+              "code": {"type": "string", "minLength": 1},
+              "message": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "field", "unit", "threshold", "observed_max", "worst_source", "status"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "field": {"enum": ["mean", "derived_rms"]},
+              "unit": {"type": "string", "minLength": 1},
+              "threshold": {"type": "number", "minimum": 0},
+              "observed_max": {"type": "number", "minimum": 0},
+              "worst_source": {"type": "string", "minLength": 1},
+              "status": {"enum": ["PASS", "FAIL"]}
+            }
+          }
+        },
+        "threshold_policy": {"type": "string", "minLength": 1}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version"],
+      "properties": {
+        "tool": {"const": "analyze_kalibr_solver_quality.py"},
+        "tool_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "fileSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "sessionSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "session_id"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "session_id": {"type": ["string", "null"]}
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean", "median", "std", "derived_rms"],
+      "properties": {
+        "mean": {"type": "number", "minimum": 0},
+        "median": {"type": "number", "minimum": 0},
+        "std": {"type": "number", "minimum": 0},
+        "derived_rms": {"type": "number", "minimum": 0}
+      }
+    },
+    "cameraMetric": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {"status": {"const": "no_corners"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "mean", "median", "std", "derived_rms"],
+          "properties": {
+            "status": {"const": "ok"},
+            "mean": {"type": "number", "minimum": 0},
+            "median": {"type": "number", "minimum": 0},
+            "std": {"type": "number", "minimum": 0},
+            "derived_rms": {"type": "number", "minimum": 0}
+          }
+        }
+      ]
+    },
+    "imuMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gyroscope": {"$ref": "#/$defs/stats"},
+        "accelerometer": {"$ref": "#/$defs/stats"}
+      }
+    },
+    "residualSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["camera_unit", "gyroscope_unit", "accelerometer_unit", "cameras", "imus"],
+      "properties": {
+        "camera_unit": {"type": "string", "minLength": 1},
+        "gyroscope_unit": {"type": "string", "minLength": 1},
+        "accelerometer_unit": {"type": "string", "minLength": 1},
+        "cameras": {
+          "type": "object",
+          "patternProperties": {"^cam[0-9]+$": {"$ref": "#/$defs/cameraMetric"}},
+          "additionalProperties": false
+        },
+        "imus": {
+          "type": "object",
+          "patternProperties": {"^imu[0-9]+$": {"$ref": "#/$defs/imuMetric"}},
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}
