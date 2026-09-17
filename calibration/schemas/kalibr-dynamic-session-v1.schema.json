@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/kalibr-dynamic-session-v1.schema.json",
+  "title": "Bividi Kalibr dynamic-session adapter manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "session_id", "created_utc", "device", "sources", "camera_mapping",
+    "camera_time_reference", "raw_to_si", "aprilgrid", "kalibr", "staged",
+    "statistics", "status", "provenance"
+  ],
+  "properties": {
+    "schema": {"const": "bividi.calibration.kalibr_dynamic_session.v1"},
+    "session_id": {"type": "string", "minLength": 1},
+    "created_utc": {"type": "string", "format": "date-time"},
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serial"],
+      "properties": {"serial": {"type": "string", "minLength": 1}}
+    },
+    "sources": {"type": "object", "minProperties": 8},
+    "camera_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["camera_a", "camera_b", "guardrail"],
+      "properties": {
+        "camera_a": {"const": "cam0"},
+        "camera_b": {"const": "cam1"},
+        "guardrail": {"type": "string", "minLength": 1}
+      }
+    },
+    "camera_time_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "time_shift_definition"],
+      "properties": {
+        "kind": {"enum": ["exposure_start", "exposure_midpoint", "exposure_end"]},
+        "time_shift_definition": {"const": "t_imu_s = t_camera_reference_s + offset_s"}
+      }
+    },
+    "raw_to_si": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "equation", "accelerometer_bias_raw_counts",
+        "accelerometer_target_m_s2_per_raw_count_matrix",
+        "gyroscope_bias_raw_counts", "gyroscope_target_rad_s_per_raw_count_matrix", "source"
+      ],
+      "properties": {
+        "equation": {"const": "target_si = matrix * (raw_counts - bias_raw_counts)"},
+        "accelerometer_bias_raw_counts": {"$ref": "#/$defs/vector3"},
+        "accelerometer_target_m_s2_per_raw_count_matrix": {"$ref": "#/$defs/matrix3"},
+        "gyroscope_bias_raw_counts": {"$ref": "#/$defs/vector3"},
+        "gyroscope_target_rad_s_per_raw_count_matrix": {"$ref": "#/$defs/matrix3"},
+        "source": {"type": "string", "minLength": 1}
+      }
+    },
+    "aprilgrid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag_cols", "tag_rows", "tag_size_m", "tag_spacing_ratio"],
+      "properties": {
+        "tag_cols": {"type": "integer", "minimum": 1},
+        "tag_rows": {"type": "integer", "minimum": 1},
+        "tag_size_m": {"type": "number", "exclusiveMinimum": 0},
+        "tag_spacing_ratio": {"type": "number", "minimum": 0}
+      }
+    },
+    "kalibr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "revision", "transform_definition", "time_shift_definition"],
+      "properties": {
+        "backend": {"const": "ethz-asl/kalibr"},
+        "revision": {"type": "string", "minLength": 1},
+        "transform_definition": {"const": "T_ci transforms imu0 coordinates into cam_i coordinates"},
+        "time_shift_definition": {"const": "t_imu_s = t_camera_reference_s + offset_s"}
+      }
+    },
+    "staged": {"type": "object", "minProperties": 7},
+    "statistics": {"type": "object"},
+    "status": {"const": "prepared_for_external_ros1_bag_writer_and_kalibr"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version"],
+      "properties": {
+        "tool": {"const": "prepare_kalibr_dynamic_session.py"},
+        "tool_version": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "vector3": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {"type": "number"}
+    },
+    "matrix3": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {
+        "type": "array", "minItems": 3, "maxItems": 3,
+        "items": {"type": "number"}
+      }
+    }
+  }
+}
