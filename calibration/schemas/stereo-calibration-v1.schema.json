@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bividi stereo calibration v1",
+  "type": "object",
+  "required": ["schema", "calibration_id", "provenance", "device", "capture", "image", "target", "camera_model", "cameras", "stereo", "rectification", "quality"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo.v1"},
+    "calibration_id": {"type": "string", "minLength": 1},
+    "provenance": {"type": "object", "required": ["kind", "source_session_sha256"], "properties": {"kind": {"enum": ["synthetic", "measured", "imported"]}}, "additionalProperties": true},
+    "device": {"type": "object"},
+    "capture": {"type": "object"},
+    "image": {"type": "object", "required": ["width", "height"]},
+    "target": {"type": "object", "required": ["target_id", "family", "sha256"]},
+    "camera_model": {"type": "object"},
+    "cameras": {"type": "object", "required": ["camera_a", "camera_b"]},
+    "stereo": {"type": "object", "required": ["R_camera_b_from_camera_a", "T_camera_b_from_camera_a_m", "baseline_m", "E", "F", "stereo_rms_px"]},
+    "rectification": {"type": "object", "required": ["R1", "R2", "P1", "P2", "Q", "vertical_epipolar_abs_px"]},
+    "quality": {"type": "object", "required": ["status", "gates"]}
+  },
+  "additionalProperties": true
+}
