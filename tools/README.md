@@ -20,10 +20,14 @@ Camera↔IMU dynamic review is split by evidence class:
 
 ```text
 analyze_camera_imu_excitation.py       common-time + multi-axis motion excitation evidence
+export_kalibr_target_observations.py   exact pinned-Kalibr AprilGrid corner export
+analyze_kalibr_target_coverage.py      target-ID/image-plane/stereo visual coverage evidence
 import_kalibr_camera_imu.py            T_cam_imu + timeshift import
 analyze_kalibr_solver_quality.py       normalized/physical optimizer residual evidence
 review_camera_imu_time_offset.py       device-time temporal sanity evidence
 compare_camera_imu_calibrations.py     independent-session repeatability evidence
 ```
 
-Excitation, residual fit, temporal plausibility, and repeatability are related but are not interchangeable claims. In particular, the excitation analyzer reports directionality proxies rather than claiming formal estimator observability.
+The target-observation exporter is the only one of the two visual-coverage tools that requires the external Kalibr runtime; the coverage analyzer is standard-library-only. The exporter deliberately reuses Kalibr's `GridDetector` observation surface rather than introducing an independent AprilTag detector with potentially different corner semantics.
+
+Inertial excitation, target/image-plane coverage, residual fit, temporal plausibility, and repeatability are related but are not interchangeable claims. The excitation and coverage analyzers report evidence/proxies rather than claiming formal estimator observability.

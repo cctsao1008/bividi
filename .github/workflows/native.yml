@@ -51,6 +51,10 @@ jobs:
         run: python tools/write_ros2_calibration_mcap.py --self-test
       - name: Camera-IMU dynamic excitation laboratory self-test
         run: python tools/analyze_camera_imu_excitation.py --self-test
+      - name: Kalibr target observation adapter contract self-test
+        run: python tools/export_kalibr_target_observations.py --self-test
+      - name: Kalibr target coverage analyzer self-test
+        run: python tools/analyze_kalibr_target_coverage.py --self-test
       - name: Kalibr camera-IMU importer self-test
         run: python tools/import_kalibr_camera_imu.py --self-test
       - name: Kalibr solver quality gate self-test
