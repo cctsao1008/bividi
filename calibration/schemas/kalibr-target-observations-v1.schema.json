@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cctsao1008/bividi/calibration/schemas/kalibr-target-observations-v1.schema.json",
+  "title": "Bividi Kalibr target observations v1",
+  "type": "object",
+  "required": ["schema", "session", "kalibr", "target", "sources", "artifacts", "camera_statistics", "status", "provenance"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.kalibr_target_observations.v1"},
+    "created_utc": {"type": "string"},
+    "session": {"$ref": "#/$defs/fileRef"},
+    "kalibr": {
+      "type": "object",
+      "required": ["backend", "revision", "reviewed_revision", "source_contract"],
+      "properties": {
+        "backend": {"const": "ethz-asl/kalibr"},
+        "revision": {"type": ["string", "null"]},
+        "reviewed_revision": {"type": "boolean"},
+        "source_contract": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "target": {
+      "type": "object",
+      "required": ["tag_rows", "tag_cols", "tag_size_m", "tag_spacing_ratio", "min_tags_for_valid_observation", "filter_corner_outliers", "corner_count"],
+      "properties": {
+        "tag_rows": {"type": "integer", "minimum": 1},
+        "tag_cols": {"type": "integer", "minimum": 1},
+        "tag_size_m": {"type": "number", "exclusiveMinimum": 0},
+        "tag_spacing_ratio": {"type": "number", "minimum": 0},
+        "min_tags_for_valid_observation": {"type": "integer", "minimum": 1},
+        "filter_corner_outliers": {"type": "boolean"},
+        "corner_count": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": true
+    },
+    "sources": {"type": "object"},
+    "artifacts": {
+      "type": "object",
+      "required": ["detections_csv", "corners_csv"],
+      "properties": {
+        "detections_csv": {"$ref": "#/$defs/fileRef"},
+        "corners_csv": {"$ref": "#/$defs/fileRef"}
+      },
+      "additionalProperties": false
+    },
+    "camera_statistics": {
+      "type": "object",
+      "required": ["camera_a", "camera_b"],
+      "properties": {
+        "camera_a": {"$ref": "#/$defs/cameraStats"},
+        "camera_b": {"$ref": "#/$defs/cameraStats"}
+      },
+      "additionalProperties": false
+    },
+    "stereo_identity": {"type": "string"},
+    "status": {"const": "KALIBR_DETECTIONS_EXPORTED"},
+    "guardrails": {"type": "array", "items": {"type": "string"}},
+    "provenance": {"type": "object"}
+  },
+  "$defs": {
+    "fileRef": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "cameraStats": {
+      "type": "object",
+      "required": ["frames", "successful_frames", "failed_frames", "total_observed_corners", "image_width", "image_height"],
+      "properties": {
+        "frames": {"type": "integer", "minimum": 1},
+        "successful_frames": {"type": "integer", "minimum": 0},
+        "failed_frames": {"type": "integer", "minimum": 0},
+        "total_observed_corners": {"type": "integer", "minimum": 0},
+        "image_width": {"type": ["integer", "null"], "minimum": 2},
+        "image_height": {"type": ["integer", "null"], "minimum": 2}
+      }
+    }
+  },
+  "additionalProperties": true
+}
