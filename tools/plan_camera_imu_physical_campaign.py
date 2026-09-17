@@ -78,6 +78,14 @@ def build_stages(dynamic_count: int) -> list[dict[str, Any]]:
             notes=["Keep the rig mechanically stationary.", "Do not infer sensor full-scale from vendor demo constants."],
         ),
         stage(
+            "audit_stationary_timing",
+            "Protocol-level device timestamp/cadence audit",
+            [artifact("imu/stationary-short.timing.json", "bividi.calibration.camera_imu_timing_audit.v1")],
+            depends_on=("capture_stationary_short",),
+            evidence_class="timing",
+            notes=["This is device-time evidence; nearest-sample geometry is not a calibrated camera↔IMU offset."],
+        ),
+        stage(
             "analyze_stationary",
             "Stationary IMU statistics",
             [artifact("imu/stationary-short.stationary.json", "bividi.calibration.imu_stationary_analysis.v1")],
@@ -129,14 +137,25 @@ def build_stages(dynamic_count: int) -> list[dict[str, Any]]:
             "imu_provenance",
             "Bind compatible IMU evidence into one session",
             [artifact("imu/imu-session.json", "bividi.calibration.imu_session_manifest.v1")],
-            depends_on=("analyze_stationary", "analyze_allan", "analyze_six_position", "analyze_gyro_rotation"),
+            depends_on=(
+                "audit_stationary_timing", "analyze_stationary", "analyze_allan",
+                "analyze_six_position", "analyze_gyro_rotation",
+            ),
             evidence_class="provenance",
+        ),
+        stage(
+            "imu_config_consistency",
+            "Declared-vs-measured IMU configuration consistency",
+            [artifact("imu/imu-config-consistency.json", "bividi.calibration.imu_config_consistency.v1")],
+            depends_on=("imu_provenance",),
+            evidence_class="quality",
+            notes=["This compares measured response against declared range/ODR; it is not register readback."],
         ),
         stage(
             "imu_promote",
             "Review/promote measured IMU artifact",
             [artifact("imu/imu-calibration.json", "bividi.calibration.imu.v1")],
-            depends_on=("imu_provenance",),
+            depends_on=("imu_config_consistency",),
             evidence_class="promoted_candidate",
             notes=["Promotion remains a review decision; this planner never manufactures values."],
         ),
@@ -318,7 +337,7 @@ def render_runbook(manifest: dict[str, Any]) -> str:
     lines.extend([
         "## Final review",
         "",
-        "Before `promotion`, verify exact specimen/config provenance, all hashes, target coverage, motion excitation, solver fit, device-time review, and independent-session repeatability. Numeric quality limits must come from an explicit lab/product policy source, not this planner.",
+        "Before `promotion`, verify exact specimen/config provenance, protocol timing, declared-vs-measured IMU configuration, all hashes, target coverage, motion excitation, solver fit, device-time review, and independent-session repeatability. Numeric quality limits must come from an explicit lab/product policy source, not this planner.",
         "",
     ])
     return "\n".join(lines)
@@ -401,6 +420,10 @@ def self_test() -> None:
         )
         root.mkdir(parents=True)
         manifest = make_manifest(args, root)
+        stage_ids = [st["id"] for st in manifest["stages"]]
+        assert "audit_stationary_timing" in stage_ids
+        assert "imu_config_consistency" in stage_ids
+        assert stage_ids.index("imu_config_consistency") < stage_ids.index("imu_promote")
         manifest_path = root / "campaign.json"
         write_json(manifest_path, manifest)
         (root / "RUNBOOK.md").write_text(render_runbook(manifest), encoding="utf-8")
