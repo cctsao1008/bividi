@@ -1,6 +1,6 @@
 # Calibration command behavior contract
 
-Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issues #89 and #91.
+Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issues #89, #91, and #93.
 
 This document defines the command-level behavior that `bividi-calib` must preserve while implementations move between compatibility scripts and installed package modules. It does **not** define calibration math, artifact schemas, or product/lab thresholds.
 
@@ -14,7 +14,7 @@ This document defines the command-level behavior that `bividi-calib` must preser
 
 `3` is therefore not a parser/runtime error. It means the evaluation itself completed and found failing evidence. Presentation/orchestration/analysis commands that do not own a quality disposition do not manufacture an exit-3 state.
 
-The package-native `imu timing-audit`, `imu stationary`, and `imu allan` commands are analysis leaves. They return `0` for a completed analysis and `2` for usage/input/domain failures; they do not currently own a PASS/FAIL evidence disposition and therefore do not use exit `3`.
+The package-native `imu timing-audit`, `imu stationary`, `imu allan`, and `imu six-position` commands are analysis leaves. They return `0` for a completed analysis and `2` for usage/input/domain failures; they do not currently own a PASS/FAIL evidence disposition and therefore do not use exit `3`.
 
 ## Provenance identity
 
@@ -32,7 +32,7 @@ Current frozen identities:
 
 `stereo report` is presentation-only Markdown and does not create a new versioned evidence artifact merely to attach provenance.
 
-The existing `bividi.calibration.camera_imu_timing_audit.v1`, `bividi.calibration.imu_stationary_analysis.v1`, and `bividi.calibration.imu_allan_analysis.v1` reports predate package migration and do not carry a top-level versioned `provenance` object. Package migration preserves those schemas rather than injecting new fields merely to make metadata uniform. The stationary and Allan reports keep explicit conversion provenance under `scale_conversion.source` when operator-supplied SI scales are used.
+The existing `bividi.calibration.camera_imu_timing_audit.v1`, `bividi.calibration.imu_stationary_analysis.v1`, `bividi.calibration.imu_allan_analysis.v1`, and `bividi.calibration.imu_six_position_analysis.v1` reports predate package migration and do not carry a top-level versioned `provenance` object. Package migration preserves those schemas rather than injecting new fields merely to make metadata uniform. The stationary and Allan reports keep explicit conversion provenance under `scale_conversion.source` when operator-supplied SI scales are used.
 
 ## Policy-source semantics
 
@@ -54,6 +54,8 @@ For package-native IMU analysis leaves:
 - `imu allan` never chooses Allan fit windows automatically. White-noise and random-walk fits exist only when `--white-window` / `--random-walk-window` are explicitly supplied.
 - `imu allan` never reduces per-axis SI fits into Kalibr scalar candidates unless `--kalibr-axis-policy` is explicit, and that option additionally requires explicit SI conversion scales plus both fit windows.
 - Allan/Kalibr fit outputs remain candidate analysis evidence; they are not automatically promoted into a Bividi calibration artifact.
+- `imu six-position` owns no default pass/fail thresholds for cross-axis coupling, scale spread, pair-center residuals, matrix condition, or pose residuals. Its affine gravity model and signed axis mapping are candidate/sanity evidence.
+- Static gravity can constrain accelerometer axis/sign mapping, but `imu six-position` explicitly does **not** claim to identify gyroscope axis/sign mapping. Controlled rotations remain required for that evidence.
 
 ## Output roles
 
@@ -70,6 +72,7 @@ The consolidated CLI intentionally does not force all leaves into one output sha
 | `imu timing-audit` | Markdown stdout + optional machine JSON / Markdown files | Timing/continuity evidence in the DECXIN device-time domain; nearest-sample deltas are not a calibrated temporal offset. |
 | `imu stationary` | Markdown stdout + optional machine JSON / Markdown files | Raw-count statistics plus optional explicitly sourced SI conversion; accelerometer stationary mean includes gravity. |
 | `imu allan` | Markdown stdout + optional Allan curve CSV / machine JSON / Markdown files | Streaming Allan/noise analysis. Raw-count curves are always available; SI fits and Kalibr candidates require explicit operator inputs and remain analysis evidence. |
+| `imu six-position` | Markdown stdout + optional pose-summary CSV / machine JSON / Markdown files | Six-pose accelerometer gravity/axis candidate model plus static gyro mean evidence; no gyro axis/sign claim and no automatic promotion. |
 
 Machine-readable evidence and gate artifacts remain authoritative where a gate exists. Human-readable output is a view over the analysis/evidence, and orchestration output describes what should exist rather than proving that the evidence is acceptable.
 
@@ -90,6 +93,8 @@ Both surfaces must preserve the same artifact/report schema, evidence/interpreta
 
 For `imu allan`, the characterized estimator/report implementation is `bividi.calibration.imu_allan`; `bividi.calibration.imu_allan_command` is a thin package command adapter that only normalizes the historical domain-error exit `3` to the frozen command-contract exit `2`. It does not alter Allan math, fit semantics, or report content.
 
+For `imu six-position`, the characterized gravity/axis implementation is `bividi.calibration.imu_six_position`; `bividi.calibration.imu_six_position_command` is likewise a command-only adapter. It does not alter the six-pose convention, affine model, signed-permutation inference, report content, or candidate-only interpretation.
+
 ## Frozen package-native set
 
 Stereo:
@@ -109,5 +114,9 @@ IMU foundation:
 IMU noise laboratory:
 
 - `imu allan`
+
+IMU axis/scale sanity laboratory:
+
+- `imu six-position`
 
 Heavier OpenCV workbench commands and the remaining IMU/camera↔IMU leaves can adopt this contract incrementally after their existing behavior is characterized. They should not be normalized by changing measurement or evidence semantics merely to make the table look uniform.
