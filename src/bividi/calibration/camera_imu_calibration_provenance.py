@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-import validate_calibration_artifact
+from . import artifact_validator as validate_calibration_artifact
 
 MANIFEST_SCHEMA = "bividi.calibration.camera_imu_evidence_manifest.v1"
 TOOL_VERSION = "1"
