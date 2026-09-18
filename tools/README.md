@@ -51,3 +51,16 @@ Inertial excitation, target/image-plane coverage, residual fit, temporal plausib
 The final provenance gate does not invent or duplicate numeric limits. Component analyzers own their explicit thresholds; the `promotion` profile only accepts evidence that is hash-consistent, explicitly gated, `PASS`, and tied to a named lab/product acceptance policy.
 
 The physical campaign planner sits one level above those tools. It orders the live-hardware workflow and audits expected artifact presence/schema, but deliberately does not duplicate hashes, quality thresholds, external solver logic, or promotion decisions.
+
+Replay reliability uses a separate test-only boundary:
+
+```text
+normalized SensorObservation replay
+  -> RecipeReplayInterceptor                  sequence/timing/pairing/IMU/continuity faults
+
+recorded session / MCAP artifact tree
+  -> apply_replay_artifact_faults.py          file/container integrity mutations
+  -> importer / storage rejection assertions
+```
+
+`apply_replay_artifact_faults.py` is copy-on-write: it refuses to mutate the source tree in place, constrains targets to relative paths inside the copied output root, and records recipe/tree/file SHA-256 provenance. It is reliability tooling only; it must not be inserted into the production Nori/DECXIN decode path.
