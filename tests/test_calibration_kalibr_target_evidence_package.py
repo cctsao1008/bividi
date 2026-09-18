@@ -165,7 +165,7 @@ class KalibrTargetEvidencePackageMigrationTests(unittest.TestCase):
             )
             for camera in target_coverage.CAMERAS:
                 writer.writerow([camera, 1000, 0, 10, 101, 101, "true", 4, 10, 30, 10, 30, 20, 20])
-                writer.writerow([camera, 2000, 1, 11, 101, 101, "true", 4, 60, 90, 60, 90, 75, 75])
+                writer.writerow([camera, 2000, 1, 11, 101, 101, "false", 0, "", "", "", "", "", ""])
         with corners.open("w", encoding="utf-8", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(
@@ -174,16 +174,10 @@ class KalibrTargetEvidencePackageMigrationTests(unittest.TestCase):
                     "corner_id", "x_px", "y_px",
                 ]
             )
-            points = {
-                1000: [(0, 10, 10), (1, 30, 10), (2, 30, 30), (3, 10, 30)],
-                2000: [(0, 60, 60), (1, 90, 60), (2, 90, 90), (3, 60, 90)],
-            }
+            points = [(0, 10, 10), (1, 30, 10), (2, 30, 30), (3, 10, 30)]
             for camera in target_coverage.CAMERAS:
-                for frame_index, (stamp, sequence) in enumerate(((1000, 10), (2000, 11))):
-                    for corner_id, x_px, y_px in points[stamp]:
-                        writer.writerow(
-                            [camera, stamp, frame_index, sequence, 101, 101, corner_id, x_px, y_px]
-                        )
+                for corner_id, x_px, y_px in points:
+                    writer.writerow([camera, 1000, 0, 10, 101, 101, corner_id, x_px, y_px])
         manifest = root / "observations.json"
         manifest.write_text(
             json.dumps(
@@ -217,7 +211,7 @@ class KalibrTargetEvidencePackageMigrationTests(unittest.TestCase):
                     "--output-prefix",
                     str(root / "coverage"),
                     "--min-detection-fraction",
-                    "1.01",
+                    "1.0",
                 ]
             )
         self.assertEqual(rc, contract.EXIT_EVALUATED_FAIL)
