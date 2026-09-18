@@ -1,6 +1,6 @@
 # Deterministic Stereo Depth Reference
 
-Status: hardware-independent numerical kernel plus normalized `SensorObservation` adapter for Issue #9. The module is an optional OpenCV/calib3d downstream consumer; it is not part of `bividi_core` and does not establish physical AR0234 depth accuracy.
+Status: hardware-independent numerical kernel, normalized `SensorObservation` adapter, and deterministic replay/fault integration for Issue #9. The module is an optional OpenCV/calib3d downstream consumer; it is not part of `bividi_core` and does not establish physical AR0234 depth accuracy.
 
 ## Purpose
 
@@ -185,7 +185,7 @@ This reset is deliberately adapter/derived-stream state. It does not claim that 
 
 ## Deterministic test geometry
 
-The native test uses the same simple geometry chosen for the first #58 synthetic SensorRig:
+The native tests use the same simple geometry chosen for the first #58 synthetic SensorRig:
 
 ```text
 image      96 x 64
@@ -212,12 +212,12 @@ The texture is deterministic and camera B samples the same virtual plane at the 
 
 These tolerances are algorithmic regression tolerances for the synthetic fixture, not product acceptance thresholds.
 
-## Next integration slices
+## End-to-end replay and fault evidence
 
-The numerical kernel and normalized observation gate are now separate and explicit. The next high-value integration is to exercise the already generated #58 session through the real replay adapter rather than constructing the normalized observation in the depth unit test:
+The deterministic #58 session is now exercised through the real replay and derived-consumer chain in CTest:
 
 ```text
-#58 generated session
+#58 generated static-plane session
         ↓
 #31 ReplaySource
         ↓
@@ -225,21 +225,51 @@ The numerical kernel and normalized observation gate are now separate and explic
         ↓
 StereoDepthObservationProcessor
         ↓
-#9 depth / XYZ
+#9 StereoSGBM
+        ↓
+disparity ≈ 4 px
+metric depth ≈ 2 m
+XYZ
 ```
 
-Then route #59 deterministic fault recipes through that same end-to-end chain and assert the layer-specific outcome:
+This test does not construct a substitute camera observation at the depth boundary. The generated session is decoded by `ReplaySource`, preserving synthetic provenance, sequence/continuity semantics, camera leases, and the replay source's `unknown` stereo-synchronization evidence. The depth policy permits that unknown state for this synthetic/replay regression while keeping it explicitly `unknown` in the derived result.
+
+The same CTest binary places #59's `RecipeReplayInterceptor` between `ReplaySource` and the real depth consumer and proves these layer-specific dispositions:
 
 ```text
-remove camera          → no depth + recovery reset
-unsynchronized pair    → no depth
-sequence duplicate     → reject duplicate derived result
-sequence gap           → explicit reset generation
-continuity epoch       → reset before derived output
-timestamp-only fault   → preserved as timing evidence; no invented sync claim
+remove camera_b
+    → rejected_camera_missing
+    → no disparity/depth/XYZ
+    → next usable frame starts a new derived-stream generation
+
+set stereo0 = unsynchronized
+    → rejected_synchronization
+    → no depth
+    → recovery resets before derived output
+
+duplicate observation
+    → first copy may be processed
+    → second identical sequence is rejected_sequence_non_monotonic
+    → recovery resets
+
+set continuity = discontinuity, epoch +1
+    → current frame may still produce per-frame depth
+    → reset occurs before that derived output
+    → return to the recorded epoch is another explicit boundary, not silent repair
 ```
 
-The adapter's policy intentionally does not turn `unknown` replay synchronization into a physical claim. A stricter live policy can require known-good synchronization once #35 supplies measured evidence.
+This is the first concrete proof that a real derived consumer reacts to deterministic replay faults instead of merely proving the fault injector can mutate observations.
+
+## Remaining software-only slices
+
+Useful remaining synthetic/replay work is narrower now:
+
+- add an explicit forward `sequence_delta` recipe through the same chain to pin sequence-gap reset behavior at the #59 seam (the adapter behavior is already unit-tested);
+- add timestamp-only replay faults as evidence-preservation tests without treating timestamp mutation itself as a synchronization estimator;
+- decide whether a recorder/derived-product envelope should persist the depth result plus source/calibration/reset provenance;
+- expose depth in viewer/web only after keeping numeric geometry separate from visualization and after deciding the runtime cost budget.
+
+These are software-contract tasks. They still cannot establish physical stereo synchronization, USB recovery, or AR0234 metric accuracy.
 
 After physical hardware arrives:
 
@@ -263,4 +293,5 @@ range / error / invalid-rate / latency evidence
 - `unknown` synchronization stays unknown even when policy permits synthetic/replay processing.
 - Visualization is not numeric geometry.
 - Depth is a derived product and never overwrites raw observation provenance.
+- Replay/fault success proves software disposition, not physical disconnect/reconnect or synchronization behavior.
 - GPU acceleration is deferred until profiling identifies a justified bottleneck.
