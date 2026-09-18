@@ -16,7 +16,7 @@ class CalibrationSelfTestRunnerTests(unittest.TestCase):
         self.assertIn("imu-allan", names)
         self.assertIn("camera-imu-solver-quality", names)
 
-    def test_manifest_resolves_all_current_source_tools(self):
+    def test_manifest_resolves_all_current_source_tools_and_schemas(self):
         root = calib_selftests.find_source_root()
         self.assertEqual(calib_selftests.validate_manifest(root), [])
 
@@ -36,6 +36,9 @@ class CalibrationSelfTestRunnerTests(unittest.TestCase):
             root = Path(tmp)
             tools = root / "tools"
             tools.mkdir()
+            schema_dir = root / "calibration" / "schemas"
+            schema_dir.mkdir(parents=True)
+            (schema_dir / "fixture.schema.json").write_text('{"type":"object"}\n', encoding="utf-8")
             (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
 
             passing = tools / "pass.py"
@@ -48,8 +51,8 @@ class CalibrationSelfTestRunnerTests(unittest.TestCase):
                 calib_selftests.CalibrationSelfTest("fail", "fail.py", ("--fixture",), "fail fixture"),
             )
 
-            # run_tests validates the production manifest before execution, so
-            # use a minimal monkeypatch only for this isolated process-control test.
+            # run_tests validates the active manifest before execution, so use
+            # a minimal monkeypatch only for this isolated process-control test.
             original_manifest = calib_selftests._SELF_TESTS
             try:
                 calib_selftests._SELF_TESTS = cases
