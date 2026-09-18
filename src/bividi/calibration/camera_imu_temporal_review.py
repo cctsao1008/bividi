@@ -20,14 +20,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-try:
-    from bividi.calibration import imu_timing as audit_imu_timing
-except ModuleNotFoundError:
-    # Keep direct source-checkout invocation working before an editable install.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from bividi.calibration import imu_timing as audit_imu_timing
-
-import validate_calibration_artifact
+from . import artifact_validator as validate_calibration_artifact
+from . import imu_timing as audit_imu_timing
 
 SESSION_SCHEMA = "bividi.calibration.kalibr_dynamic_session.v1"
 ARTIFACT_SCHEMA = "bividi.calibration.camera_imu.v1"
