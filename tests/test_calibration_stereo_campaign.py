@@ -117,14 +117,23 @@ class StereoCampaignModuleTests(unittest.TestCase):
                     ]
                 )
             self.assertEqual(rc, 0)
-            manifest = json.loads((root / "campaign.json").read_text(encoding="utf-8"))
+            manifest_path = root / "campaign.json"
+            runbook_path = root / "RUNBOOK.md"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["schema"], stereo_campaign.SCHEMA)
             self.assertEqual(
                 manifest["provenance"]["tool"],
                 "plan_stereo_calibration_campaign.py",
             )
-            self.assertIn("Stereo Physical Calibration Campaign", (root / "RUNBOOK.md").read_text(encoding="utf-8"))
-            self.assertIn(str(root / "campaign.json"), stdout.getvalue())
+            self.assertIn(
+                "Stereo Physical Calibration Campaign",
+                runbook_path.read_text(encoding="utf-8"),
+            )
+            # Windows may print the long path while tempfile exposes an 8.3 alias.
+            # The user-visible contract is that both created artifact names are reported.
+            output = stdout.getvalue()
+            self.assertIn("campaign.json", output)
+            self.assertIn("RUNBOOK.md", output)
 
     def test_nonempty_campaign_root_preserves_exit_code_two(self):
         with tempfile.TemporaryDirectory() as tmp:
