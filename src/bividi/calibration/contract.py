@@ -28,6 +28,7 @@ PolicyRole = Literal[
     "recorded-orchestration-metadata",
     "analysis-parameter-no-acceptance-gate",
     "explicit-scale-source-no-acceptance-gate",
+    "explicit-analysis-parameters-no-acceptance-gate",
 ]
 
 
@@ -137,6 +138,17 @@ IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
         compatibility_tool="analyze_imu_stationary.py",
         output_role="machine-evidence-json-and-human-markdown",
         policy_role="explicit-scale-source-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+    CalibrationCommandContract(
+        group="imu",
+        name="allan",
+        module="bividi.calibration.imu_allan_command",
+        compatibility_tool="analyze_imu_allan.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="explicit-analysis-parameters-no-acceptance-gate",
         emits_versioned_provenance=False,
         tool_version=None,
         evaluated_fail_exit=None,
