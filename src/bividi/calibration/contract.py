@@ -33,6 +33,7 @@ PolicyRole = Literal[
     "explicit-analysis-parameters-no-acceptance-gate",
     "candidate-analysis-no-acceptance-gate",
     "explicit-operator-gates-no-default-thresholds",
+    "explicit-operator-gates-with-structural-fail-no-default-thresholds",
     "structural-provenance-gate-no-numerical-policy",
     "measured-fields-required-synthetic-opt-in",
     "measured-evidence-required-synthetic-opt-in",
@@ -253,6 +254,21 @@ CAMERA_IMU_STAGING_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="camera-imu",
+        name="excitation",
+        module="bividi.calibration.camera_imu_excitation_command",
+        compatibility_tool="analyze_camera_imu_excitation.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="explicit-operator-gates-with-structural-fail-no-default-thresholds",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
@@ -262,6 +278,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + IMU_PROVENANCE_COMMAND_CONTRACTS
     + IMU_INTEROP_COMMAND_CONTRACTS
     + CAMERA_IMU_STAGING_COMMAND_CONTRACTS
+    + CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}

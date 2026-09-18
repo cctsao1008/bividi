@@ -3,7 +3,7 @@
 Owner: Issue #47  
 Upstream: prepared `bividi.calibration.kalibr_dynamic_session.v1`  
 Output: `bividi.calibration.camera_imu_excitation.v1` JSON + Markdown evidence  
-Status: hardware-independent analyzer implemented; physical AR0234 motion evidence pending
+Status: package-native hardware-independent analyzer implemented; physical AR0234 motion evidence pending
 
 ## Purpose
 
@@ -15,7 +15,7 @@ prepared dynamic session
   camera_b.csv
   imu0.csv
         ↓
-analyze_camera_imu_excitation.py
+bividi-calib camera-imu excitation
         ↓
 time coverage
 camera/IMU cadence
@@ -28,6 +28,33 @@ JSON + Markdown evidence
 ```
 
 This tool deliberately does **not** claim a formal Kalibr observability proof.
+
+## Package / compatibility mapping
+
+The installed implementation is:
+
+```text
+bividi.calibration.camera_imu_excitation
+bividi.calibration.camera_imu_excitation_command
+```
+
+The historical entry point remains available as a thin compatibility wrapper:
+
+```text
+tools/analyze_camera_imu_excitation.py
+```
+
+`bividi-calib camera-imu excitation` therefore runs without a Bividi source checkout. Package migration changes only command routing/exit normalization; report math, schema, gates, provenance identity, and interpretation stay unchanged.
+
+The frozen command exits are:
+
+```text
+0  evidence-only or explicit PASS
+2  usage/input/schema/domain/read/write error
+3  completed report FAIL
+```
+
+The historical source script used `3` for domain errors and `7` for an evaluated FAIL. The package command adapter corrects that process-level collision without changing report status semantics.
 
 ## Why this is a separate evidence class
 
@@ -47,10 +74,10 @@ Formal estimator observability depends on the model, trajectory, target geometry
 
 ## Input contract
 
-Run it on the `session.json` produced by `tools/prepare_kalibr_dynamic_session.py`:
+Run it on the `session.json` produced by `bividi-calib camera-imu prepare`:
 
 ```bash
-python tools/analyze_camera_imu_excitation.py \
+bividi-calib camera-imu excitation \
   ar0234_kalibr_001/session.json \
   --output-prefix ar0234_kalibr_001/excitation
 ```
@@ -187,14 +214,14 @@ With structurally valid input and no explicit numeric requirements:
 EVIDENCE_ONLY_NO_THRESHOLDS
 ```
 
-Bividi does not invent universal motion thresholds.
+Bividi does not invent universal motion thresholds. Structural failures such as mismatched stereo timestamps can still produce a completed `FAIL` without numeric gates.
 
 ## Optional requirement-based gates
 
 When a physical procedure, validated baseline, or product requirement justifies limits, use explicit gates:
 
 ```bash
-python tools/analyze_camera_imu_excitation.py \
+bividi-calib camera-imu excitation \
   ar0234_kalibr_001/session.json \
   --min-shared-duration-s <LIMIT> \
   --min-shared-fraction <LIMIT> \
@@ -252,6 +279,6 @@ stereo timestamp mismatch structural FAIL
 Markdown rendering
 ```
 
-No ROS, MCAP, OpenCV, or Kalibr installation is required for this analysis self-test.
+No ROS, MCAP, OpenCV, or Kalibr installation is required for this analysis self-test. Ubuntu and Windows also execute package-level tests that run the installed command outside a source checkout while retaining the direct compatibility-wrapper self-test.
 
 Related: #8, #35, #47, #46.
