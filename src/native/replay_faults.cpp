@@ -68,6 +68,14 @@ std::uint64_t read_u64(const cv::FileNode& node, const char* key, const std::str
     throw std::runtime_error(context + "." + key + " must be an integer or decimal string");
 }
 
+std::size_t read_index(const cv::FileNode& node, const char* key, const std::string& context) {
+    const auto value = read_u64(node, key, context);
+    if (value > std::numeric_limits<std::size_t>::max()) {
+        throw std::runtime_error(context + "." + key + " exceeds size_t");
+    }
+    return static_cast<std::size_t>(value);
+}
+
 std::int64_t read_i64(const cv::FileNode& node, const char* key, const std::string& context) {
     const auto child = node[key];
     if (child.empty()) {
@@ -93,6 +101,22 @@ void require_keys(const cv::FileNode& node, const KeySet& allowed, const std::st
     }
 }
 
+bool supported_schema(const std::string& schema) noexcept {
+    return schema == kReplayFaultRecipeSchemaV1 || schema == kReplayFaultRecipeSchemaV2;
+}
+
+bool requires_v2(ReplayFaultAction action) noexcept {
+    switch (action) {
+        case ReplayFaultAction::camera_exposure_time_delta_us:
+        case ReplayFaultAction::drop_imu_sample:
+        case ReplayFaultAction::duplicate_imu_sample:
+        case ReplayFaultAction::imu_sample_time_delta_at_index_us:
+            return true;
+        default:
+            return false;
+    }
+}
+
 ReplayFaultAction parse_action(const std::string& value, const std::string& context) {
     if (value == "drop") return ReplayFaultAction::drop;
     if (value == "duplicate") return ReplayFaultAction::duplicate;
@@ -103,6 +127,10 @@ ReplayFaultAction parse_action(const std::string& value, const std::string& cont
     if (value == "imu_sample_time_delta_us") return ReplayFaultAction::imu_sample_time_delta_us;
     if (value == "set_stereo_synchronization") return ReplayFaultAction::set_stereo_synchronization;
     if (value == "set_continuity") return ReplayFaultAction::set_continuity;
+    if (value == "camera_exposure_time_delta_us") return ReplayFaultAction::camera_exposure_time_delta_us;
+    if (value == "drop_imu_sample") return ReplayFaultAction::drop_imu_sample;
+    if (value == "duplicate_imu_sample") return ReplayFaultAction::duplicate_imu_sample;
+    if (value == "imu_sample_time_delta_at_index_us") return ReplayFaultAction::imu_sample_time_delta_at_index_us;
     throw std::runtime_error(context + " unsupported action: " + value);
 }
 
@@ -152,35 +180,63 @@ void validate_rule(const ReplayFaultRule& rule) {
     if (rule.id.empty()) throw std::invalid_argument("fault rule id must not be empty");
     switch (rule.action) {
         case ReplayFaultAction::drop:
+        case ReplayFaultAction::drop_all_imu:
+        case ReplayFaultAction::drop_imu_sample:
             break;
+
         case ReplayFaultAction::duplicate:
+        case ReplayFaultAction::duplicate_imu_sample:
             if (rule.copies == 0) throw std::invalid_argument("duplicate rule copies must be >= 1");
             break;
+
         case ReplayFaultAction::sequence_delta:
         case ReplayFaultAction::host_time_delta_ns:
         case ReplayFaultAction::imu_sample_time_delta_us:
+        case ReplayFaultAction::imu_sample_time_delta_at_index_us:
             if (rule.delta == 0) throw std::invalid_argument("delta fault rule must use non-zero delta");
             break;
+
         case ReplayFaultAction::remove_camera:
             if (rule.stream_id.empty()) throw std::invalid_argument("remove_camera rule requires stream_id");
             break;
-        case ReplayFaultAction::drop_all_imu:
+
+        case ReplayFaultAction::camera_exposure_time_delta_us:
+            if (rule.stream_id.empty()) {
+                throw std::invalid_argument("camera_exposure_time_delta_us rule requires stream_id");
+            }
+            if (rule.delta == 0) {
+                throw std::invalid_argument("camera_exposure_time_delta_us rule requires non-zero delta");
+            }
             break;
+
         case ReplayFaultAction::set_stereo_synchronization:
             if (rule.pair_id.empty()) {
                 throw std::invalid_argument("set_stereo_synchronization rule requires pair_id");
             }
             break;
+
         case ReplayFaultAction::set_continuity:
             break;
     }
+}
+
+ImuObservation& indexed_imu(
+    SensorObservation& observation,
+    const ReplayFaultRule& rule,
+    const std::string& context) {
+    if (rule.imu_index >= observation.imu.size()) {
+        throw std::runtime_error(
+            context + " imu_index " + std::to_string(rule.imu_index) +
+            " is outside observation IMU sample count " + std::to_string(observation.imu.size()));
+    }
+    return observation.imu[rule.imu_index];
 }
 
 void apply_rule(const ReplayFaultRule& rule, SensorObservation& observation) {
     switch (rule.action) {
         case ReplayFaultAction::drop:
         case ReplayFaultAction::duplicate:
-            return;  // cardinality actions are handled by the caller.
+            return;  // observation-cardinality actions are handled by the caller.
 
         case ReplayFaultAction::sequence_delta:
             if (!observation.sequence_present) {
@@ -260,10 +316,66 @@ void apply_rule(const ReplayFaultRule& rule, SensorObservation& observation) {
                 rule.delta,
                 "fault rule " + rule.id + " continuity_epoch");
             return;
+
+        case ReplayFaultAction::camera_exposure_time_delta_us: {
+            const auto it = std::find_if(
+                observation.cameras.begin(),
+                observation.cameras.end(),
+                [&](const CameraObservation& camera) { return camera.stream_id == rule.stream_id; });
+            if (it == observation.cameras.end()) {
+                throw std::runtime_error(
+                    "fault rule " + rule.id + " camera stream not present: " + rule.stream_id);
+            }
+            auto& exposure = it->exposure;
+            if (!exposure.complete() ||
+                exposure.start.domain != ClockDomain::device || exposure.end.domain != ClockDomain::device ||
+                exposure.start.unit != TimeUnit::microseconds || exposure.end.unit != TimeUnit::microseconds) {
+                throw std::runtime_error(
+                    "fault rule " + rule.id + " requires complete device-domain microsecond camera exposure timing");
+            }
+            exposure.start.ticks = apply_delta(
+                exposure.start.ticks, rule.delta, "fault rule " + rule.id + " exposure start");
+            exposure.end.ticks = apply_delta(
+                exposure.end.ticks, rule.delta, "fault rule " + rule.id + " exposure end");
+            // Finite-width raw ES/EE evidence is deliberately preserved so the
+            // synthetic normalized-device-time inconsistency remains visible.
+            return;
+        }
+
+        case ReplayFaultAction::drop_imu_sample: {
+            (void)indexed_imu(observation, rule, "fault rule " + rule.id);
+            observation.imu.erase(observation.imu.begin() + static_cast<std::ptrdiff_t>(rule.imu_index));
+            return;
+        }
+
+        case ReplayFaultAction::duplicate_imu_sample: {
+            const auto sample = indexed_imu(observation, rule, "fault rule " + rule.id);
+            const auto insertion = observation.imu.begin() + static_cast<std::ptrdiff_t>(rule.imu_index + 1);
+            observation.imu.insert(insertion, rule.copies, sample);
+            return;
+        }
+
+        case ReplayFaultAction::imu_sample_time_delta_at_index_us: {
+            auto& sample = indexed_imu(observation, rule, "fault rule " + rule.id);
+            if (!sample.sample_time.present || sample.sample_time.domain != ClockDomain::device ||
+                sample.sample_time.unit != TimeUnit::microseconds) {
+                throw std::runtime_error(
+                    "fault rule " + rule.id + " requires device-domain IMU microsecond sample_time");
+            }
+            sample.sample_time.ticks = apply_delta(
+                sample.sample_time.ticks,
+                rule.delta,
+                "fault rule " + rule.id + " indexed imu sample_time");
+            // Raw finite-width timestamp evidence is deliberately unchanged.
+            return;
+        }
     }
 }
 
-ReplayFaultRule parse_rule(const cv::FileNode& node, std::size_t index) {
+ReplayFaultRule parse_rule(
+    const cv::FileNode& node,
+    std::size_t index,
+    const std::string& recipe_schema) {
     const std::string context = "rules[" + std::to_string(index) + "]";
     const auto id = read_required_string(node, "id", context);
     const auto action_text = read_required_string(node, "action", context);
@@ -271,13 +383,14 @@ ReplayFaultRule parse_rule(const cv::FileNode& node, std::size_t index) {
 
     ReplayFaultRule rule{};
     rule.id = id;
-    const auto position = read_u64(node, "at_source_position", context);
-    if (position > std::numeric_limits<std::size_t>::max()) {
-        throw std::runtime_error(context + ".at_source_position exceeds size_t");
-    }
-    rule.at_source_position = static_cast<std::size_t>(position);
+    rule.at_source_position = read_index(node, "at_source_position", context);
     rule.action = parse_action(action_text, context);
     rule.expected = parse_expected(expected_text, context);
+
+    if (recipe_schema == kReplayFaultRecipeSchemaV1 && requires_v2(rule.action)) {
+        throw std::runtime_error(
+            context + " action " + action_text + " requires schema " + kReplayFaultRecipeSchemaV2);
+    }
 
     KeySet allowed{"id", "at_source_position", "action", "expected_disposition"};
     switch (rule.action) {
@@ -322,6 +435,37 @@ ReplayFaultRule parse_rule(const cv::FileNode& node, std::size_t index) {
                 read_required_string(node, "state", context), context + ".state");
             rule.delta = read_i64(node, "epoch_delta", context);
             break;
+
+        case ReplayFaultAction::camera_exposure_time_delta_us:
+            allowed.insert("stream_id");
+            allowed.insert("delta");
+            rule.stream_id = read_required_string(node, "stream_id", context);
+            rule.delta = read_i64(node, "delta", context);
+            break;
+
+        case ReplayFaultAction::drop_imu_sample:
+            allowed.insert("imu_index");
+            rule.imu_index = read_index(node, "imu_index", context);
+            break;
+
+        case ReplayFaultAction::duplicate_imu_sample: {
+            allowed.insert("imu_index");
+            allowed.insert("copies");
+            rule.imu_index = read_index(node, "imu_index", context);
+            const auto copies = read_u64(node, "copies", context);
+            if (copies == 0 || copies > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::runtime_error(context + ".copies must be in [1, uint32_max]");
+            }
+            rule.copies = static_cast<std::uint32_t>(copies);
+            break;
+        }
+
+        case ReplayFaultAction::imu_sample_time_delta_at_index_us:
+            allowed.insert("imu_index");
+            allowed.insert("delta");
+            rule.imu_index = read_index(node, "imu_index", context);
+            rule.delta = read_i64(node, "delta", context);
+            break;
     }
 
     require_keys(node, allowed, context);
@@ -342,6 +486,9 @@ ReplayFaultRecipe load_replay_fault_recipe(const std::filesystem::path& path) {
 
     ReplayFaultRecipe recipe{};
     recipe.schema = read_required_string(root, "schema", "recipe");
+    if (!supported_schema(recipe.schema)) {
+        throw std::runtime_error("unsupported replay fault recipe schema: " + recipe.schema);
+    }
     recipe.seed = read_u64(root, "seed", "recipe");
 
     const auto rules = root["rules"];
@@ -350,7 +497,7 @@ ReplayFaultRecipe load_replay_fault_recipe(const std::filesystem::path& path) {
     }
     std::size_t index = 0;
     for (auto it = rules.begin(); it != rules.end(); ++it, ++index) {
-        recipe.rules.push_back(parse_rule(*it, index));
+        recipe.rules.push_back(parse_rule(*it, index, recipe.schema));
     }
 
     validate_replay_fault_recipe(recipe);
@@ -358,7 +505,7 @@ ReplayFaultRecipe load_replay_fault_recipe(const std::filesystem::path& path) {
 }
 
 void validate_replay_fault_recipe(const ReplayFaultRecipe& recipe) {
-    if (recipe.schema != kReplayFaultRecipeSchema) {
+    if (!supported_schema(recipe.schema)) {
         throw std::invalid_argument("unsupported replay fault recipe schema: " + recipe.schema);
     }
     if (recipe.rules.empty()) {
@@ -370,6 +517,11 @@ void validate_replay_fault_recipe(const ReplayFaultRecipe& recipe) {
     std::set<std::size_t> non_drop_positions;
     for (const auto& rule : recipe.rules) {
         validate_rule(rule);
+        if (recipe.schema == kReplayFaultRecipeSchemaV1 && requires_v2(rule.action)) {
+            throw std::invalid_argument(
+                "replay fault action " + std::string(replay_fault_action_name(rule.action)) +
+                " requires schema " + kReplayFaultRecipeSchemaV2);
+        }
         if (!ids.insert(rule.id).second) {
             throw std::invalid_argument("duplicate replay fault rule id: " + rule.id);
         }
@@ -461,6 +613,10 @@ const char* replay_fault_action_name(ReplayFaultAction action) noexcept {
         case ReplayFaultAction::imu_sample_time_delta_us: return "imu_sample_time_delta_us";
         case ReplayFaultAction::set_stereo_synchronization: return "set_stereo_synchronization";
         case ReplayFaultAction::set_continuity: return "set_continuity";
+        case ReplayFaultAction::camera_exposure_time_delta_us: return "camera_exposure_time_delta_us";
+        case ReplayFaultAction::drop_imu_sample: return "drop_imu_sample";
+        case ReplayFaultAction::duplicate_imu_sample: return "duplicate_imu_sample";
+        case ReplayFaultAction::imu_sample_time_delta_at_index_us: return "imu_sample_time_delta_at_index_us";
     }
     return "unknown";
 }
