@@ -11,6 +11,12 @@ from pathlib import Path
 from bividi import calib_cli
 
 
+_MIGRATED_STEREO_MODULES = {
+    "target-scale": "bividi.calibration.target_scale",
+    "geometry-review": "bividi.calibration.stereo_geometry",
+}
+
+
 class CalibrationCliTests(unittest.TestCase):
     def test_registry_has_unique_group_command_pairs(self):
         pairs = [(item.group, item.name) for item in calib_cli.commands()]
@@ -47,36 +53,37 @@ class CalibrationCliTests(unittest.TestCase):
             self.assertEqual(Path(invocation[1]), script.resolve())
             self.assertEqual(invocation[2:], ["solve", "session.json", "--output", "calibration.json"])
 
-    def test_migrated_module_does_not_require_source_checkout(self):
-        invocation = calib_cli.build_invocation(
-            "stereo",
-            "target-scale",
-            ["target.json", "--measurement-source", "caliper", "--method", "caliper"],
-            source_root=Path("/definitely/not/a/bividi/checkout"),
-        )
-        self.assertEqual(
-            invocation[:3],
-            [sys.executable, "-m", "bividi.calibration.target_scale"],
-        )
-        self.assertEqual(invocation[3], "target.json")
+    def test_migrated_modules_do_not_require_source_checkout(self):
+        for command, module in _MIGRATED_STEREO_MODULES.items():
+            with self.subTest(command=command):
+                invocation = calib_cli.build_invocation(
+                    "stereo",
+                    command,
+                    ["fixture.json", "--self-test"],
+                    source_root=Path("/definitely/not/a/bividi/checkout"),
+                )
+                self.assertEqual(invocation[:3], [sys.executable, "-m", module])
+                self.assertEqual(invocation[3], "fixture.json")
 
-    def test_migrated_module_executes_outside_source_checkout(self):
+    def test_migrated_modules_execute_outside_source_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
             previous = Path.cwd()
             os.chdir(tmp)
             try:
-                rc = calib_cli.main(
-                    [
-                        "--source-root",
-                        "/definitely/not/a/bividi/checkout",
-                        "stereo",
-                        "target-scale",
-                        "--self-test",
-                    ]
-                )
+                for command in _MIGRATED_STEREO_MODULES:
+                    with self.subTest(command=command):
+                        rc = calib_cli.main(
+                            [
+                                "--source-root",
+                                "/definitely/not/a/bividi/checkout",
+                                "stereo",
+                                command,
+                                "--self-test",
+                            ]
+                        )
+                        self.assertEqual(rc, 0)
             finally:
                 os.chdir(previous)
-        self.assertEqual(rc, 0)
 
     def test_unknown_command_returns_explicit_error(self):
         stderr = io.StringIO()
@@ -118,27 +125,25 @@ class CalibrationCliTests(unittest.TestCase):
             self.assertIn("analyze_imu_allan.py", stdout.getvalue())
             self.assertIn("trace.csv", stdout.getvalue())
 
-    def test_migrated_module_dry_run_is_source_tree_independent(self):
-        stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
-            rc = calib_cli.main(
-                [
-                    "--source-root",
-                    "/definitely/not/a/bividi/checkout",
-                    "--dry-run",
-                    "stereo",
-                    "target-scale",
-                    "target.json",
-                    "--measurement-source",
-                    "caliper",
-                    "--method",
-                    "caliper",
-                ]
-            )
-        self.assertEqual(rc, 0)
-        output = stdout.getvalue()
-        self.assertIn("-m bividi.calibration.target_scale", output)
-        self.assertNotIn("review_calibration_target_scale.py", output)
+    def test_migrated_module_dry_runs_are_source_tree_independent(self):
+        for command, module in _MIGRATED_STEREO_MODULES.items():
+            with self.subTest(command=command):
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    rc = calib_cli.main(
+                        [
+                            "--source-root",
+                            "/definitely/not/a/bividi/checkout",
+                            "--dry-run",
+                            "stereo",
+                            command,
+                            "--self-test",
+                        ]
+                    )
+                self.assertEqual(rc, 0)
+                output = stdout.getvalue()
+                self.assertIn(f"-m {module}", output)
+                self.assertNotIn("tools/", output)
 
 
 if __name__ == "__main__":
