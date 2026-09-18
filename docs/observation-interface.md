@@ -65,14 +65,17 @@ source_id
 evidence kind
 source state
 observation validity
-sequence
+sequence + sequence_present
 continuity epoch / state
 host and replay timing context
 calibration identities
 configuration revision
 camera observations[]
 IMU observations[]
+stereo-pair status[]
 ```
+
+`sequence_present` is explicit so sequence value `0` can remain a legitimate producer sequence rather than being overloaded as “not available”.
 
 The contract intentionally supports mono, stereo, camera-only, IMU-only, and mixed sensor sources. Missing modalities are represented by absent observations/capabilities, not fabricated defaults.
 
@@ -109,15 +112,35 @@ host_monotonic
   host receive/acquisition boundary time
 
 device
-  extended device/exposure/IMU time
+  extended device/frame/exposure/IMU time
 
 replay
   replay scheduling timeline only
 ```
 
-Camera exposure start/end are attached to each camera observation. IMU sample time is attached to each IMU observation. Replay scheduling time never overwrites producer/device timestamps.
+A camera observation may expose a device-domain `frame_time` when the device/API provides an unambiguous frame timestamp semantic. Exposure start/end remain separate fields. An adapter must not manufacture `frame_time` by silently choosing exposure start, midpoint, or end.
+
+IMU sample time is attached to each IMU observation. Replay scheduling time never overwrites producer/device timestamps.
 
 Finite-width source timestamps may additionally be preserved as `RawTimestampEvidence`. They are evidence for rollover/audit work; downstream code should use the extended `TimePoint` for normalized ordering.
+
+`TimingCapabilities` declares which timing surfaces a source actually provides. Conformance validation requires those surfaces only when the corresponding capability is declared.
+
+## Stereo synchronization state
+
+A declared stereo pair and a synchronization claim are separate concepts.
+
+`SensorObservation.stereo_pairs[]` carries per-pair status using:
+
+```text
+SynchronizationState
+  unknown
+  synchronized
+  unsynchronized
+  degraded
+```
+
+`unknown` is a valid and important state. A vendor protocol statement or common transport packet does not automatically justify publishing `synchronized`; that state should reflect the producer's documented evidence policy. Physical synchronization bounds remain characterization evidence, not topology.
 
 ## IMU raw versus SI values
 
@@ -188,15 +211,20 @@ These are references, not embedded solver schemas. Consumers resolve the corresp
 
 It maps a leased `decxin::DecodedFrame` to the generic contract while preserving:
 
-- frame sequence;
+- frame sequence with `sequence_present=true`;
 - host receive monotonic time;
 - exposure start/end extended device time;
 - raw 32-bit exposure timestamp evidence;
 - camera A/B image views and shared buffer lifetime;
 - IMU raw/extended timestamps;
-- raw accel/gyro counts.
+- raw accel/gyro counts;
+- an explicit stereo-pair status entry.
 
-It deliberately does **not** publish unverified IMU SI values. Camera streams remain named `camera_a` / `camera_b`; physical left/right naming remains blocked on #35 evidence.
+The adapter deliberately leaves camera `frame_time` absent rather than choosing ES/midpoint/EE as a universal visual timestamp. Calibration/export paths select and record their required camera-time convention explicitly.
+
+The initial DECXIN stereo-pair synchronization state is `unknown`. The adapter does not upgrade vendor synchronization claims into measured runtime evidence.
+
+It also deliberately does **not** publish unverified IMU SI values. Camera streams remain named `camera_a` / `camera_b`; physical left/right naming remains blocked on #35 evidence.
 
 ## Conformance validation
 
@@ -205,15 +233,18 @@ It deliberately does **not** publish unverified IMU SI values. Camera streams re
 `validate_observation()` checks structural invariants such as:
 
 - contract version/source identity;
+- optional-sequence semantics;
 - clock-domain semantics;
 - camera buffer lifetime and declared geometry/pixel format;
-- required exposure timing when capabilities advertise it;
+- required device frame time only when advertised by capabilities;
+- required exposure timing when advertised by capabilities;
 - IMU capability/timestamp consistency;
 - raw/SI measurement availability;
 - finite SI values;
+- stereo-pair status references;
 - invalid source/observation state combinations.
 
-Conformance means the object obeys the interface contract. It is not a physical accuracy or calibration-quality claim.
+Conformance means the object obeys the interface contract. It is not a physical accuracy, calibration-quality, or synchronization-accuracy claim.
 
 ## Derived products
 
