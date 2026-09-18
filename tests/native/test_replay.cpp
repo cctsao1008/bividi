@@ -210,7 +210,9 @@ void test_replay_capture_session_preview_and_controls() {
 
     bividi::ReplaySessionConfig config{};
     config.session_dir = temp.path;
-    config.rate = 1.0;
+    // Slow the 1 ms synthetic source spacing to 100 ms so pause/resume is
+    // exercised deterministically instead of racing the three-frame EOF.
+    config.rate = 0.01;
     config.start_paused = true;
     bividi::ReplayCaptureSession session(config);
 
@@ -225,6 +227,27 @@ void test_replay_capture_session_preview_and_controls() {
     assert(!session.cycle_trigger());
 
     assert(session.toggle_capture());
+    assert(wait_for([&] { return session.snapshot().capture.frames >= 1; }));
+
+    // Pause before the next scheduled observation and prove the source cursor
+    // does not advance while playback is paused.
+    assert(session.toggle_capture());
+    const auto paused_frames = session.snapshot().capture.frames;
+    assert(session.snapshot().capture.state == bividi::CaptureState::paused);
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    assert(session.snapshot().capture.frames == paused_frames);
+
+    bividi::StereoPreviewFrame preview;
+    assert(session.latest_stereo_preview(preview));
+    assert(preview.valid());
+    assert(preview.camera_a.pixel_format == bividi::PixelFormat::bgr24);
+    assert(preview.camera_b.pixel_format == bividi::PixelFormat::bgr24);
+    assert(preview.camera_a.bytes_per_pixel == 3);
+    assert(preview.camera_a.data[0] == 10);
+    assert(preview.camera_a.data[1] == 10);
+    assert(preview.camera_a.data[2] == 10);
+
+    assert(session.toggle_capture());
     assert(wait_for([&] {
         const auto current = session.snapshot();
         return current.capture.state == bividi::CaptureState::idle &&
@@ -237,27 +260,20 @@ void test_replay_capture_session_preview_and_controls() {
     assert(status.exposure_start_us == 3000);
     assert(status.exposure_end_us == 3100);
 
-    bividi::StereoPreviewFrame preview;
     assert(session.latest_stereo_preview(preview));
-    assert(preview.valid());
     assert(preview.sequence == 12);
-    assert(preview.camera_a.pixel_format == bividi::PixelFormat::bgr24);
-    assert(preview.camera_b.pixel_format == bividi::PixelFormat::bgr24);
-    assert(preview.camera_a.bytes_per_pixel == 3);
     assert(preview.camera_a.data[0] == 50);
     assert(preview.camera_a.data[1] == 50);
     assert(preview.camera_a.data[2] == 50);
 
-    // Toggle at EOF is defined as restart from the beginning. This makes the
-    // engineering UI deterministic without changing original observation time.
-    assert(session.toggle_capture());
-    assert(wait_for([&] { return session.snapshot().capture.frames > 0; }));
+    // Reconnect/reset is a playback restart, not a producer-timestamp rewrite.
+    assert(session.reconnect());
+    assert(wait_for([&] {
+        const auto current = session.snapshot();
+        return current.last_action == "replay reset" && current.capture.frames >= 1;
+    }));
     assert(session.toggle_capture());
     assert(session.snapshot().capture.state == bividi::CaptureState::paused);
-
-    // Reconnect/reset restarts playback and resumes it.
-    assert(session.reconnect());
-    assert(wait_for([&] { return session.snapshot().capture.frames > 0; }));
 }
 
 void test_cross_csv_identity_mismatch_is_rejected() {
