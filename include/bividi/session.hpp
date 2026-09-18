@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bividi/capabilities.hpp"
 #include "bividi/capture.hpp"
 
 #include <cstdint>
@@ -7,18 +8,11 @@
 
 namespace bividi {
 
-enum class TriggerMode {
-    free_run,
-    software,
-    hardware,
-    command,
-};
-
 [[nodiscard]] const char* trigger_mode_name(TriggerMode mode) noexcept;
 
-// Engineering/UI stereo preview only. This is deliberately smaller than the
-// final sensor-observation contract owned by Issue #11: it carries two borrowed
-// image views plus the lease and timing needed to display them safely.
+// Engineering/UI stereo preview only. This remains deliberately smaller than
+// the stable SensorObservation contract: it carries two borrowed image views
+// plus the lease and timing needed to display them safely.
 struct StereoPreviewFrame {
     FrameLease lease{};
     ImageView camera_a{};
@@ -35,7 +29,7 @@ struct StereoPreviewFrame {
 };
 
 // Lightweight engineering/runtime status shared by viewer and web front ends.
-// This is not the final sensor-observation schema owned by Issue #11.
+// This control/status surface does not replace SensorObservation.
 struct SessionStatus {
     CaptureStatus capture{};
     double fps = 0.0;
@@ -54,9 +48,9 @@ struct SessionStatus {
     }
 };
 
-// Shared lifecycle/control surface for engineering front ends.
-// Frame delivery remains on CapturedFrame -> device adapter -> decoded-frame
-// boundaries until the normalized observation contract is frozen under #11.
+// Shared lifecycle/control surface for engineering front ends. Normalized data
+// consumers should use the SensorObservation boundary rather than this preview
+// interface.
 class CaptureSession {
 public:
     virtual ~CaptureSession() = default;
