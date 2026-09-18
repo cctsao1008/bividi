@@ -1,8 +1,8 @@
 # Consolidated calibration CLI
 
-Status: Issue #60 consolidation in progress.
+Status: `bividi-calib` consolidation completed in Issue #60; package-native migration continues incrementally under focused follow-up issues such as #89.
 
-`bividi-calib` is the discoverable operator entry point for the stereo, IMU, and camera-to-IMU evidence tools. Reusable implementations are being migrated under the installed `bividi` package incrementally; direct `tools/*.py` entry points remain compatibility surfaces while that migration proceeds.
+`bividi-calib` is the discoverable operator entry point for the stereo, IMU, and camera-to-IMU evidence tools. Reusable implementations are migrated under the installed `bividi` package incrementally; direct `tools/*.py` entry points remain compatibility surfaces while that migration proceeds.
 
 ```text
 bividi-calib
@@ -31,7 +31,7 @@ The underlying evidence concepts remain separate: target/session construction, i
 
 Existing `tools/*.py` entry points remain compatibility surfaces during migration. Versioned artifacts remain readable independently of command naming.
 
-The frozen package-native command behavior is documented in `docs/calibration/command-contract.md` and represented by `bividi.calibration.contract`. That contract captures exit-code vocabulary, historical provenance identity, policy-source roles, and output authority boundaries without centralizing numerical calibration policy.
+The frozen package-native command behavior is documented in `docs/calibration/command-contract.md` and represented by `bividi.calibration.contract`. That contract captures exit-code vocabulary, historical provenance identity where artifacts already carry it, policy/parameter roles, and output authority boundaries without centralizing numerical calibration policy.
 
 ## Entry point
 
@@ -52,6 +52,8 @@ bividi-calib stereo repeatability --help
 bividi-calib stereo promote --help
 bividi-calib stereo report --help
 bividi-calib stereo campaign --help
+bividi-calib imu timing-audit --help
+bividi-calib imu stationary --help
 ```
 
 Remaining compatibility-routed commands still locate the source checkout containing `tools/`. Their resolution order is:
@@ -117,10 +119,10 @@ Use a leaf command's normal `--help` to see the exact arguments owned by the imp
 
 ```bash
 bividi-calib stereo solve --help
-bividi-calib imu allan --help
+bividi-calib imu stationary --help
 ```
 
-The leaf implementation exit code is preserved by the router.
+The leaf implementation exit code is preserved by the router. Package-native leaves conform to the frozen command vocabulary: `0` success, `2` usage/input/domain error, and `3` only when a completed evidence evaluation explicitly produces `FAIL`.
 
 ## Migration map
 
@@ -133,8 +135,9 @@ The leaf implementation exit code is preserved by the router.
 | `stereo promote` | installed `bividi.calibration.stereo_provenance`; legacy wrapper `tools/stereo_calibration_provenance.py` |
 | `stereo report` | installed `bividi.calibration.stereo_report`; legacy wrapper `tools/render_stereo_calibration_report.py` |
 | `stereo campaign` | installed `bividi.calibration.stereo_campaign`; legacy wrapper `tools/plan_stereo_calibration_campaign.py` |
-| `imu timing-audit` | `tools/audit_imu_timing.py` |
-| `imu stationary/allan/six-position/gyro-rotation/config-consistency` | corresponding `tools/analyze_imu_*.py` |
+| `imu timing-audit` | installed `bividi.calibration.imu_timing`; legacy wrapper `tools/audit_imu_timing.py` |
+| `imu stationary` | installed `bividi.calibration.imu_stationary`; legacy wrapper `tools/analyze_imu_stationary.py` |
+| `imu allan/six-position/gyro-rotation/config-consistency` | corresponding `tools/analyze_imu_*.py` |
 | `imu provenance` | `tools/imu_calibration_provenance.py` |
 | `imu export-kalibr` | `tools/export_kalibr_imu.py` |
 | `camera-imu prepare` | `tools/prepare_kalibr_dynamic_session.py` |
@@ -149,34 +152,52 @@ The leaf implementation exit code is preserved by the router.
 | `camera-imu promote` | `tools/camera_imu_calibration_provenance.py` |
 | `camera-imu campaign` | `tools/plan_camera_imu_physical_campaign.py` |
 
-The `target-scale`, `geometry-review`, `repeatability`, `promote`, `report`, and `campaign` migrations are package-native stereo leaves. Their legacy wrappers delegate to installed modules while preserving existing evidence schemas/semantics and historical command behavior.
+The six dependency-light stereo leaves and the IMU timing/stationary foundation are package-native. Their legacy wrappers delegate to installed modules while preserving report/artifact schemas and evidence interpretation boundaries.
 
-The promotion gate remains a gate rather than a calibration algorithm. It preserves the existing `integrity` / `review` / `promotion` profiles and `INTEGRITY_OK` / `REVIEWABLE` / `PROMOTION_READY` dispositions; verifies SHA-256 evidence bindings and cross-links; and, for promotion, requires measured provenance, immutable acquisition evidence, verified camera mapping, explicit PASS quality evidence with gates, and named policy sources. It still owns no numeric calibration thresholds.
+For the IMU foundation specifically, `imu stationary` now imports timing analysis through `bividi.calibration.imu_timing`; it no longer depends on a sibling `tools/audit_imu_timing.py` implementation. The timing audit still stays entirely inside the DECXIN device-time domain, and nearest-sample deltas remain timing evidence rather than a calibrated camera↔IMU offset. Stationary analysis still reports raw counts first and performs SI conversion only when the operator supplies explicit per-count scale plus `--scale-source`.
 
-The campaign planner still does not invent numeric limits: it only defines workflow/dependency/evidence expectations and a presence/schema audit; quality/hash/policy verification remains owned by the evidence tools.
+The stereo promotion gate remains a gate rather than a calibration algorithm. It preserves the existing `integrity` / `review` / `promotion` profiles and `INTEGRITY_OK` / `REVIEWABLE` / `PROMOTION_READY` dispositions; verifies SHA-256 evidence bindings and cross-links; and, for promotion, requires measured provenance, immutable acquisition evidence, verified camera mapping, explicit PASS quality evidence with gates, and named policy sources. It still owns no numeric calibration thresholds.
+
+The stereo campaign planner still does not invent numeric limits: it only defines workflow/dependency/evidence expectations and a presence/schema audit; quality/hash/policy verification remains owned by the evidence tools.
 
 ## Central self-test manifest
 
-Calibration command regression is registered once in `bividi.calib_selftests` rather than duplicated as a long list of GitHub Actions steps. The manifest still invokes every focused leaf self-test; consolidation changes orchestration, not the tests themselves.
+Calibration command regression is registered once in `bividi.calib_selftests` rather than duplicated as a long list of GitHub Actions steps. The manifest still invokes every focused leaf self-test through the compatibility surfaces; consolidation changes orchestration, not the tests themselves.
 
 ```bash
 python -m bividi.calib_selftests --list
 python -m bividi.calib_selftests
-python -m bividi.calib_selftests --only stereo-workbench --only imu-allan
+python -m bividi.calib_selftests --only imu-timing --only imu-stationary
 ```
 
-The runner validates that every registered compatibility source tool exists, preserves each leaf process exit code as failure evidence, runs from the repository root, reports all failures by default, and supports `--fail-fast` for local diagnosis. Ubuntu and Windows execute the same manifest in CI. The OpenCV synthetic stereo solver remains in the OpenCV job because it intentionally exercises a heavier optional dependency surface.
+The runner validates that every registered compatibility source tool exists, preserves each leaf process exit code as failure evidence, runs from the repository root, reports all failures by default, and supports `--fail-fast` for local diagnosis. Ubuntu and Windows execute the same manifest in CI. Package-level unit tests additionally execute migrated modules outside a source checkout.
 
-Characterization/qualification self-tests for #35 remain separate from this calibration manifest; they are not calibration commands and should not be pulled into #60 merely to shorten YAML.
+Characterization/qualification self-tests for #35 remain separate from this calibration manifest; they are not calibration commands and should not be pulled into the calibration migration merely to shorten YAML.
 
 ## Dependency and evidence boundaries
 
-The router and self-test manifest use only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
+The router, contract metadata, IMU timing audit, and stationary analyzer use only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
 
-`synthetic`, `measured`, and `imported` provenance, named policy sources, SHA-256 evidence binding, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. Package migration must preserve those meanings; command routing does not normalize or reinterpret thresholds. Human-readable rendering is downstream of those machine-readable artifacts and never upgrades their evidence disposition. Campaign planning is orchestration metadata, not a substitute for generated evidence.
+`synthetic`, `measured`, and `imported` provenance, named policy sources, SHA-256 evidence binding, explicit scale sources, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. Package migration must preserve those meanings; command routing does not normalize or reinterpret thresholds. Human-readable rendering is downstream of machine-readable evidence/analysis and never upgrades an evidence disposition.
 
-## Current limitations / next #60 slices
+## Current migration state / next slices
 
-Six dependency-light stereo implementations (`stereo target-scale`, `stereo geometry-review`, `stereo repeatability`, `stereo promote`, `stereo report`, and `stereo campaign`) have moved under the installed package. The OpenCV stereo workbench commands remain intentionally heavier and still use the compatibility source-tree route.
+Package-native dependency-light stereo commands:
 
-The common behavior contract is now frozen from those six migrated leaves. The next #60 work should extend the same characterize-first migration approach to additional dependency-light IMU/camera-IMU leaves, or separately characterize the heavier OpenCV workbench before moving it. New migrations should conform to the frozen exit-code/provenance/policy/output roles where those roles apply; they must not change existing artifact schemas, evidence gates, or optional-dependency boundaries merely to force superficial uniformity.
+```text
+target-scale
+geometry-review
+repeatability
+promote
+report
+campaign
+```
+
+Package-native IMU foundation commands:
+
+```text
+timing-audit
+stationary
+```
+
+The next IMU migration slices should remain dependency-light and characterize-first. Natural candidates are `allan`, `six-position`, `gyro-rotation`, `config-consistency`, and finally the IMU provenance/promotion gate. Each migration should adopt the frozen exit/output/policy contract where it semantically applies, but must not alter measurement math, report schemas, or optional-dependency boundaries merely for superficial uniformity. The heavier OpenCV stereo workbench and ROS/Kalibr-facing adapters should remain isolated until their own packaging boundary is explicitly characterized.
