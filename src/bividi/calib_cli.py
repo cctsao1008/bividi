@@ -146,7 +146,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
     ),
 
     # Camera/IMU / #47
-    CalibrationCommand("camera-imu", "prepare", "prepare_kalibr_dynamic_session.py", (), "prepare a hash-bound Kalibr dynamic session"),
+    CalibrationCommand(
+        "camera-imu",
+        "prepare",
+        None,
+        summary="prepare a hash-bound Kalibr dynamic session",
+        module="bividi.calibration.kalibr_dynamic_session_command",
+    ),
     CalibrationCommand("camera-imu", "excitation", "analyze_camera_imu_excitation.py", (), "review dynamic motion excitation evidence"),
     CalibrationCommand("camera-imu", "target-observations", "export_kalibr_target_observations.py", (), "export pinned-Kalibr target observations"),
     CalibrationCommand("camera-imu", "target-coverage", "analyze_kalibr_target_coverage.py", (), "analyze AprilGrid/image-plane coverage"),
