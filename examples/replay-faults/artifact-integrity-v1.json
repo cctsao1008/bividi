@@ -1,0 +1,21 @@
+{
+  "schema": "bividi.replay_artifact_fault_recipe.v1",
+  "seed": 0,
+  "rules": [
+    {
+      "id": "truncate-camera-a",
+      "target": "camera_a/0000000000.png",
+      "action": "truncate_file",
+      "size_bytes": 24,
+      "expected_disposition": "decode_failure"
+    },
+    {
+      "id": "corrupt-frame-csv-byte",
+      "target": "frames.csv",
+      "action": "xor_byte",
+      "offset": 0,
+      "mask": 1,
+      "expected_disposition": "reject_artifact"
+    }
+  ]
+}
