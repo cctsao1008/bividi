@@ -1,6 +1,6 @@
 # Consolidated calibration CLI
 
-Status: `bividi-calib` consolidation completed in Issue #60; package-native migration continues incrementally under focused follow-up issues such as #89, #91, #93, #95, and #97.
+Status: `bividi-calib` consolidation completed in Issue #60; package-native migration continues incrementally under focused follow-up issues such as #89, #91, #93, #95, #97, and #99.
 
 `bividi-calib` is the discoverable operator entry point for the stereo, IMU, and camera-to-IMU evidence tools. Reusable implementations are migrated under the installed `bividi` package incrementally; direct `tools/*.py` entry points remain compatibility surfaces while that migration proceeds.
 
@@ -58,6 +58,7 @@ bividi-calib imu allan --help
 bividi-calib imu six-position --help
 bividi-calib imu gyro-rotation --help
 bividi-calib imu config-consistency --help
+bividi-calib imu provenance --help
 ```
 
 Remaining compatibility-routed commands still locate the source checkout containing `tools/`. Their resolution order is:
@@ -123,10 +124,10 @@ Use a leaf command's normal `--help` to see the exact arguments owned by the imp
 
 ```bash
 bividi-calib stereo solve --help
-bividi-calib imu config-consistency --help
+bividi-calib imu provenance --help
 ```
 
-Package-native leaves conform to the frozen command vocabulary: `0` success/non-failing evaluation, `2` usage/input/domain error, and `3` only when a completed evidence evaluation explicitly produces `FAIL`.
+Package-native leaves conform to the frozen command vocabulary: `0` success/non-failing evaluation, `2` usage/input/domain error, and `3` when a completed evidence/gate evaluation explicitly fails.
 
 ## Migration map
 
@@ -145,7 +146,7 @@ Package-native leaves conform to the frozen command vocabulary: `0` success/non-
 | `imu six-position` | installed gravity/axis analyzer `bividi.calibration.imu_six_position` via command adapter `bividi.calibration.imu_six_position_command`; legacy wrapper `tools/analyze_imu_six_position.py` |
 | `imu gyro-rotation` | installed controlled-turn analyzer `bividi.calibration.imu_gyro_rotation` via command adapter `bividi.calibration.imu_gyro_rotation_command`; legacy wrapper `tools/analyze_imu_gyro_rotation.py` |
 | `imu config-consistency` | installed response-consistency analyzer `bividi.calibration.imu_config_consistency` via command adapter `bividi.calibration.imu_config_consistency_command`; legacy wrapper `tools/analyze_imu_config_consistency.py` |
-| `imu provenance` | `tools/imu_calibration_provenance.py` |
+| `imu provenance` | installed manifest/provenance gate `bividi.calibration.imu_provenance` via command adapter `bividi.calibration.imu_provenance_command`; legacy wrapper `tools/imu_calibration_provenance.py` |
 | `imu export-kalibr` | `tools/export_kalibr_imu.py` |
 | `camera-imu prepare` | `tools/prepare_kalibr_dynamic_session.py` |
 | `camera-imu excitation` | `tools/analyze_camera_imu_excitation.py` |
@@ -159,7 +160,7 @@ Package-native leaves conform to the frozen command vocabulary: `0` success/non-
 | `camera-imu promote` | `tools/camera_imu_calibration_provenance.py` |
 | `camera-imu campaign` | `tools/plan_camera_imu_physical_campaign.py` |
 
-The six dependency-light stereo leaves, IMU timing/stationary foundation, Allan/noise laboratory, six-position accelerometer axis/scale laboratory, controlled gyro-rotation laboratory, and configuration-consistency gate are package-native. Their legacy wrappers delegate to installed modules while preserving report/artifact schemas and evidence interpretation boundaries.
+The six dependency-light stereo leaves and the dependency-free IMU timing/stationary, Allan/noise, six-position, controlled gyro-rotation, configuration-consistency, and provenance leaves are package-native. Their legacy wrappers delegate to installed modules while preserving report/artifact schemas and evidence interpretation boundaries.
 
 For the IMU foundation specifically, `imu stationary` imports timing analysis through `bividi.calibration.imu_timing`; it no longer depends on a sibling `tools/audit_imu_timing.py` implementation. The timing audit still stays entirely inside the DECXIN device-time domain, and nearest-sample deltas remain timing evidence rather than a calibrated camera↔IMU offset. Stationary analysis still reports raw counts first and performs SI conversion only when the operator supplies explicit per-count scale plus `--scale-source`.
 
@@ -170,6 +171,8 @@ For `imu six-position`, the characterized six stationary poses estimate an evide
 For `imu gyro-rotation`, the characterized analyzer subtracts a measured stationary raw-count bias and trapezoidally integrates each controlled turn over extended device time. The six +/- target-frame right-hand-rule turns establish gyro signed-axis/symmetry/coupling evidence. Absolute 3x3 gyro sensitivity is produced only when the operator explicitly provides a common commanded angle; no nominal angle, sample rate, vendor full-scale, or sensitivity is inferred. An optional six-position report provides accelerometer↔gyro signed-mapping comparison, and disagreement is reported rather than auto-corrected. See `docs/calibration/imu-gyro-rotation.md`.
 
 For `imu config-consistency`, the analyzer verifies SHA-256-bound six-position/gyro/stationary/Allan evidence against the session manifest and compares measured physical response with declared range/ODR. It is not register readback: filter settings remain declared configuration provenance unless separately verified. No tolerance is invented by default. Explicit operator thresholds may produce PASS/FAIL/INCOMPLETE; a completed FAIL is exit `3`, while schema/hash/input failures are exit `2`. See `docs/calibration/imu-config-consistency.md`.
+
+For `imu provenance`, the characterized manifest gate binds recorder summaries, raw traces, analysis JSON, observed device/mode metadata, and operator-declared IMU configuration. The `basic`, `full-imu`, and `promotion` profiles are structural/provenance gates. `promotion` additionally requires measured provenance and non-placeholder specimen/configuration fields, but it does not currently inspect analysis numerical statuses or require the #97 config-consistency report. A promotion PASS is therefore evidence of a complete, compatible, immutable measured bundle—not product-accuracy approval. See `docs/calibration/imu-calibration-provenance-gate.md`.
 
 The stereo promotion gate remains a gate rather than a calibration algorithm. It preserves the existing `integrity` / `review` / `promotion` profiles and `INTEGRITY_OK` / `REVIEWABLE` / `PROMOTION_READY` dispositions; verifies SHA-256 evidence bindings and cross-links; and, for promotion, requires measured provenance, immutable acquisition evidence, verified camera mapping, explicit PASS quality evidence with gates, and named policy sources. It still owns no numeric calibration thresholds.
 
@@ -182,7 +185,7 @@ Calibration command regression is registered once in `bividi.calib_selftests` ra
 ```bash
 python -m bividi.calib_selftests --list
 python -m bividi.calib_selftests
-python -m bividi.calib_selftests --only imu-timing --only imu-stationary --only imu-allan --only imu-six-position --only imu-gyro-rotation --only imu-config-consistency
+python -m bividi.calib_selftests --only imu-timing --only imu-stationary --only imu-allan --only imu-six-position --only imu-gyro-rotation --only imu-config-consistency --only imu-provenance
 ```
 
 The runner validates that every registered compatibility source tool exists, preserves each leaf process exit code as failure evidence, runs from the repository root, reports all failures by default, and supports `--fail-fast` for local diagnosis. Ubuntu and Windows execute the same manifest in CI. Package-level unit tests additionally execute migrated modules outside a source checkout.
@@ -191,7 +194,7 @@ Characterization/qualification self-tests for #35 remain separate from this cali
 
 ## Dependency and evidence boundaries
 
-The router, contract metadata, IMU timing audit, stationary analyzer, Allan/noise laboratory, six-position laboratory, controlled gyro-rotation laboratory, and configuration-consistency analyzer use only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
+The router, contract metadata, package-native IMU timing/stationary/Allan/six-position/gyro-rotation/config-consistency/provenance leaves use only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
 
 `synthetic`, `measured`, and `imported` provenance, named policy sources where already defined, SHA-256 evidence binding, explicit scale/angle sources, explicit operator gates, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. Package migration must preserve those meanings; command routing does not normalize or reinterpret thresholds. Human-readable rendering is downstream of machine-readable evidence/analysis and never upgrades an evidence disposition.
 
@@ -208,30 +211,16 @@ report
 campaign
 ```
 
-Package-native IMU foundation commands:
+Package-native dependency-free IMU commands:
 
 ```text
 timing-audit
 stationary
-```
-
-Package-native IMU noise laboratory:
-
-```text
 allan
-```
-
-Package-native IMU axis/scale sanity laboratories:
-
-```text
 six-position
 gyro-rotation
-```
-
-Package-native IMU configuration gate:
-
-```text
 config-consistency
+provenance
 ```
 
-The next dependency-light IMU slice is naturally the IMU provenance/promotion gate. Each migration should adopt the frozen exit/output/policy contract where it semantically applies, but must not alter measurement math, report schemas, or optional-dependency boundaries merely for superficial uniformity. The heavier OpenCV stereo workbench and ROS/Kalibr-facing adapters should remain isolated until their own packaging boundary is explicitly characterized.
+The remaining IMU-facing `export-kalibr` adapter and the camera↔IMU/Kalibr-facing leaves should remain isolated until their own packaging and optional-dependency boundaries are explicitly characterized. Package migration must not be used to smuggle semantic changes into promotion criteria; any decision to make config-consistency or numerical analysis status mandatory for IMU promotion should be reviewed separately.

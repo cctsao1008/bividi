@@ -2,7 +2,48 @@
 
 Owner: Issue #47  
 Applies to: Bividi IMU stationary, Allan, six-position, and controlled-rotation evidence  
-Status: dependency-free manifest/gate implemented; measured specimen manifests pending delivered hardware
+Status: dependency-free manifest/gate implemented; package-native under Issue #99; measured specimen manifests pending delivered hardware
+
+## Package-native command surface
+
+The operator entry point is:
+
+```bash
+bividi-calib imu provenance ...
+```
+
+The characterized implementation is installed as:
+
+```text
+bividi.calibration.imu_provenance
+```
+
+and command-level exit classification is applied by:
+
+```text
+bividi.calibration.imu_provenance_command
+```
+
+The historical source-tree entry point remains as a thin compatibility wrapper:
+
+```text
+tools/imu_calibration_provenance.py
+```
+
+Both command surfaces preserve manifest schema, role sets, profile semantics, hash behavior, and manifest provenance identity. Manifests created after package migration still record:
+
+```text
+provenance.tool = tools/imu_calibration_provenance.py
+provenance.tool_version = 1
+```
+
+The package adapter applies the common command vocabulary without changing gate semantics:
+
+```text
+0  PASS / non-failing completion
+2  usage, malformed input, missing/unreadable input, or other command-domain error
+3  completed gate evaluation with one or more verification failures
+```
 
 ## Purpose
 
@@ -134,12 +175,20 @@ gyro_rotation
 
 Known roles also validate their report schema identifiers, preventing a random JSON file from satisfying a named analysis slot.
 
+### Important structural-vs-quality boundary
+
+The current characterized promotion profile does **not** require `config_consistency` as an analysis role and does not inspect the numerical `status` of the four required analysis reports. Package migration intentionally preserves that behavior.
+
+Therefore a `promotion` PASS means the bundle is structurally complete, hash-bound, internally compatible according to recorded metadata, non-placeholder, and measured. It is **not** evidence that range/ODR response checks or product accuracy thresholds have passed.
+
+If Bividi later decides that #97 configuration-consistency PASS, analysis-specific gates, or other numerical quality evidence must be mandatory for promotion, that should be introduced as an explicit semantic change with its own tests/review rather than hidden inside packaging work.
+
 ## Create a manifest
 
 Example after all captures/reports exist:
 
 ```bash
-python tools/imu_calibration_provenance.py create \
+bividi-calib imu provenance create \
   --output ar0234_imu_session.manifest.json \
   --session-id ar0234-unit01-imu-20260917 \
   --device-model "DECXIN AR0234 stereo module" \
@@ -182,7 +231,7 @@ Each `--capture ROLE=...` points to the `bividi-nori-imu-record` **summary JSON*
 Checks structure, recorder provenance consistency, report-schema mapping, file sizes, and SHA-256 bindings. It does not require every calibration experiment.
 
 ```bash
-python tools/imu_calibration_provenance.py verify session.manifest.json
+bividi-calib imu provenance verify session.manifest.json
 ```
 
 ### `full-imu`
@@ -190,7 +239,7 @@ python tools/imu_calibration_provenance.py verify session.manifest.json
 Additionally requires the complete capture/analysis role set and rejects placeholder IMU configuration text.
 
 ```bash
-python tools/imu_calibration_provenance.py verify \
+bividi-calib imu provenance verify \
   session.manifest.json \
   --profile full-imu
 ```
@@ -208,7 +257,7 @@ provenance.kind == measured
 and rejects placeholder specimen/device fields.
 
 ```bash
-python tools/imu_calibration_provenance.py verify \
+bividi-calib imu provenance verify \
   session.manifest.json \
   --profile promotion
 ```
@@ -222,7 +271,7 @@ By default, verification reopens every capture summary, raw trace and analysis J
 Manifest paths are stored relative to the manifest where practical. If an archived bundle is relocated while preserving its internal layout, use:
 
 ```bash
-python tools/imu_calibration_provenance.py verify \
+bividi-calib imu provenance verify \
   session.manifest.json \
   --base-dir <RESTORED_EVIDENCE_ROOT> \
   --profile promotion
@@ -269,4 +318,4 @@ The Nori recorder currently records camera/device provenance but not a verified 
 
 A later hardware-register provenance tool should feed this same gate rather than creating a parallel calibration contract.
 
-Related: `imu-stationary-analysis.md`, `imu-allan-noise-lab.md`, `imu-six-position-axis-lab.md`, `imu-gyro-rotation-lab.md`, Issue #47, Issue #46.
+Related: `imu-stationary-analysis.md`, `imu-allan-noise-lab.md`, `imu-six-position-axis-lab.md`, `imu-gyro-rotation-lab.md`, `imu-config-consistency.md`, Issue #47, Issue #46.

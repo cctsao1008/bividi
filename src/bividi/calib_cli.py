@@ -130,7 +130,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="compare declared configuration with measured response",
         module="bividi.calibration.imu_config_consistency_command",
     ),
-    CalibrationCommand("imu", "provenance", "imu_calibration_provenance.py", (), "run IMU provenance/promotion gate"),
+    CalibrationCommand(
+        "imu",
+        "provenance",
+        None,
+        summary="run IMU provenance/promotion gate",
+        module="bividi.calibration.imu_provenance_command",
+    ),
     CalibrationCommand("imu", "export-kalibr", "export_kalibr_imu.py", (), "export measured IMU parameters for Kalibr"),
 
     # Camera/IMU / #47
