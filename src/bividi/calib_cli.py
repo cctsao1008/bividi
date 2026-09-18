@@ -65,7 +65,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="compare independent stereo calibrations",
         module="bividi.calibration.stereo_repeatability",
     ),
-    CalibrationCommand("stereo", "promote", "stereo_calibration_provenance.py", (), "run stereo evidence/promotion gate"),
+    CalibrationCommand(
+        "stereo",
+        "promote",
+        None,
+        summary="run stereo evidence/promotion gate",
+        module="bividi.calibration.stereo_provenance",
+    ),
     CalibrationCommand(
         "stereo",
         "report",
