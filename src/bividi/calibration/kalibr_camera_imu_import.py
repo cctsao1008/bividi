@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Sequence
 
-import validate_calibration_artifact
+from . import artifact_validator as validate_calibration_artifact
 
 SESSION_SCHEMA = "bividi.calibration.kalibr_dynamic_session.v1"
 IMU_ARTIFACT_SCHEMA = "bividi.calibration.imu.v1"
