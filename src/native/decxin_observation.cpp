@@ -27,6 +27,24 @@ RawTimestampEvidence raw_device_us(
     };
 }
 
+CameraObservation camera_observation(
+    const std::string& stream_id,
+    const FrameLease& lease,
+    const ImageView& image,
+    const ExposureTiming& exposure) {
+    CameraObservation camera{};
+    camera.stream_id = stream_id;
+    camera.lease = lease;
+    camera.image = image;
+    // Do not choose ES/midpoint/EE as a generic visual frame timestamp here.
+    // Exposure start/end remain explicit and downstream calibration/export
+    // code chooses the reference semantics when required.
+    camera.frame_time = {};
+    camera.exposure = exposure;
+    camera.validity = ObservationValidity::valid;
+    return camera;
+}
+
 }  // namespace
 
 SensorObservation to_sensor_observation(
@@ -45,6 +63,9 @@ SensorObservation to_sensor_observation(
         context.camera_a_stream_id == context.camera_b_stream_id) {
         throw std::invalid_argument("DECXIN camera stream ids must be distinct and non-empty");
     }
+    if (context.stereo_pair_id.empty()) {
+        throw std::invalid_argument("DECXIN stereo_pair_id must not be empty");
+    }
     if (context.camera_clock_id.empty() || context.imu_clock_id.empty()) {
         throw std::invalid_argument("DECXIN normalized device clock ids must not be empty");
     }
@@ -55,6 +76,7 @@ SensorObservation to_sensor_observation(
     observation.source_state = SourceState::available;
     observation.validity = ObservationValidity::valid;
     observation.sequence = decoded.sequence;
+    observation.sequence_present = true;
     observation.continuity_epoch = context.continuity_epoch;
     observation.continuity = context.continuity;
     observation.calibration = context.calibration;
@@ -77,19 +99,20 @@ SensorObservation to_sensor_observation(
         decoded.timing.header.exposure_end_raw_us,
         context.camera_clock_id);
 
-    observation.cameras.push_back(CameraObservation{
+    observation.cameras.push_back(camera_observation(
         context.camera_a_stream_id,
         decoded.lease,
         decoded.camera_a,
-        exposure,
-        ObservationValidity::valid,
-    });
-    observation.cameras.push_back(CameraObservation{
+        exposure));
+    observation.cameras.push_back(camera_observation(
         context.camera_b_stream_id,
         decoded.lease,
         decoded.camera_b,
-        exposure,
-        ObservationValidity::valid,
+        exposure));
+
+    observation.stereo_pairs.push_back(StereoPairStatus{
+        context.stereo_pair_id,
+        SynchronizationState::unknown,
     });
 
     observation.imu.reserve(decoded.timing.imu_samples.size());
