@@ -123,7 +123,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="analyze controlled gyro rotations",
         module="bividi.calibration.imu_gyro_rotation_command",
     ),
-    CalibrationCommand("imu", "config-consistency", "analyze_imu_config_consistency.py", (), "compare declared configuration with measured response"),
+    CalibrationCommand(
+        "imu",
+        "config-consistency",
+        None,
+        summary="compare declared configuration with measured response",
+        module="bividi.calibration.imu_config_consistency_command",
+    ),
     CalibrationCommand("imu", "provenance", "imu_calibration_provenance.py", (), "run IMU provenance/promotion gate"),
     CalibrationCommand("imu", "export-kalibr", "export_kalibr_imu.py", (), "export measured IMU parameters for Kalibr"),
 

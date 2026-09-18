@@ -30,6 +30,7 @@ PolicyRole = Literal[
     "explicit-scale-source-no-acceptance-gate",
     "explicit-analysis-parameters-no-acceptance-gate",
     "candidate-analysis-no-acceptance-gate",
+    "explicit-operator-gates-no-default-thresholds",
 ]
 
 
@@ -120,8 +121,6 @@ STEREO_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
-# Issue #89 foundation leaves. Kept as a focused tuple because tests and docs
-# treat timing/stationary as the coupled base that later IMU laboratories build on.
 IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="imu",
@@ -148,7 +147,6 @@ IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
-# Package-native noise-characterization laboratories layered on that foundation.
 IMU_NOISE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="imu",
@@ -164,8 +162,6 @@ IMU_NOISE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
-# Package-native axis/scale sanity laboratories. These produce candidate evidence
-# but do not own promotion or product acceptance thresholds.
 IMU_AXIS_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="imu",
@@ -192,11 +188,27 @@ IMU_AXIS_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+IMU_CONFIG_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="imu",
+        name="config-consistency",
+        module="bividi.calibration.imu_config_consistency_command",
+        compatibility_tool="analyze_imu_config_consistency.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="explicit-operator-gates-no-default-thresholds",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
     + IMU_NOISE_COMMAND_CONTRACTS
     + IMU_AXIS_COMMAND_CONTRACTS
+    + IMU_CONFIG_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
