@@ -48,6 +48,7 @@ bividi-calib stereo target-scale --help
 bividi-calib stereo geometry-review --help
 bividi-calib stereo repeatability --help
 bividi-calib stereo report --help
+bividi-calib stereo campaign --help
 ```
 
 Remaining compatibility-routed commands still locate the source checkout containing `tools/`. Their resolution order is:
@@ -128,7 +129,7 @@ The leaf implementation exit code is preserved by the router.
 | `stereo repeatability` | installed `bividi.calibration.stereo_repeatability`; legacy wrapper `tools/compare_stereo_calibrations.py` |
 | `stereo promote` | `tools/stereo_calibration_provenance.py` |
 | `stereo report` | installed `bividi.calibration.stereo_report`; legacy wrapper `tools/render_stereo_calibration_report.py` |
-| `stereo campaign` | `tools/plan_stereo_calibration_campaign.py` |
+| `stereo campaign` | installed `bividi.calibration.stereo_campaign`; legacy wrapper `tools/plan_stereo_calibration_campaign.py` |
 | `imu timing-audit` | `tools/audit_imu_timing.py` |
 | `imu stationary/allan/six-position/gyro-rotation/config-consistency` | corresponding `tools/analyze_imu_*.py` |
 | `imu provenance` | `tools/imu_calibration_provenance.py` |
@@ -145,7 +146,7 @@ The leaf implementation exit code is preserved by the router.
 | `camera-imu promote` | `tools/camera_imu_calibration_provenance.py` |
 | `camera-imu campaign` | `tools/plan_camera_imu_physical_campaign.py` |
 
-The `target-scale`, `geometry-review`, `repeatability`, and `report` migrations are the first package-native stereo leaves. Their legacy wrappers delegate to installed modules while preserving the existing evidence schemas/semantics and historical command behavior. The report renderer remains presentation-only: it does not manufacture acceptance evidence or replace the provenance gate. This is the template for subsequent dependency-light migrations.
+The `target-scale`, `geometry-review`, `repeatability`, `report`, and `campaign` migrations are package-native stereo leaves. Their legacy wrappers delegate to installed modules while preserving existing evidence schemas/semantics and historical command behavior. The campaign planner still does not invent numeric limits: it only defines workflow/dependency/evidence expectations and a presence/schema audit; quality/hash/policy verification remains owned by the evidence tools.
 
 ## Central self-test manifest
 
@@ -165,10 +166,10 @@ Characterization/qualification self-tests for #35 remain separate from this cali
 
 The router and self-test manifest use only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
 
-`synthetic`, `measured`, and `imported` provenance, named policy sources, SHA-256 evidence binding, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. Package migration must preserve those meanings; command routing does not normalize or reinterpret thresholds. Human-readable rendering is downstream of those machine-readable artifacts and never upgrades their evidence disposition.
+`synthetic`, `measured`, and `imported` provenance, named policy sources, SHA-256 evidence binding, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. Package migration must preserve those meanings; command routing does not normalize or reinterpret thresholds. Human-readable rendering is downstream of those machine-readable artifacts and never upgrades their evidence disposition. Campaign planning is orchestration metadata, not a substitute for generated evidence.
 
 ## Current limitations / next #60 slices
 
-Four dependency-light stereo implementations (`stereo target-scale`, `stereo geometry-review`, `stereo repeatability`, and `stereo report`) have moved under the installed package. Most commands still dispatch into source-tree scripts and therefore still require a checkout containing `tools/`.
+Five dependency-light stereo implementations (`stereo target-scale`, `stereo geometry-review`, `stereo repeatability`, `stereo report`, and `stereo campaign`) have moved under the installed package. `stereo promote` remains the major dependency-light stereo evidence leaf still routed through `tools/`; the OpenCV workbench commands remain intentionally heavier.
 
-The next structural work should assess the stereo provenance/promotion and physical campaign surfaces for package migration. At this point there are enough real package-native leaves to begin extracting only the common behavior that is genuinely shared—error/exit-code vocabulary, stable tool/version identity, and machine-readable output conventions—without changing existing artifact schemas or evidence gates. Heavier OpenCV/ROS-facing implementations should remain isolated from unrelated commands.
+The next structural slice should assess/migrate the stereo provenance/promotion gate. After that, there are enough package-native evidence producers/consumers/orchestrators to freeze the common command behavior contract—exit-code vocabulary, stable historical tool/version provenance, policy-source semantics, and JSON/Markdown output roles—without changing existing artifact schemas or evidence gates. Heavier OpenCV/ROS-facing implementations should remain isolated from unrelated commands.

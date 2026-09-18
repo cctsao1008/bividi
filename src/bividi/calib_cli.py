@@ -73,7 +73,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="render a human stereo calibration report",
         module="bividi.calibration.stereo_report",
     ),
-    CalibrationCommand("stereo", "campaign", "plan_stereo_calibration_campaign.py", (), "plan/audit a physical stereo campaign"),
+    CalibrationCommand(
+        "stereo",
+        "campaign",
+        None,
+        summary="plan/audit a physical stereo campaign",
+        module="bividi.calibration.stereo_campaign",
+    ),
 
     # IMU / #47
     CalibrationCommand("imu", "timing-audit", "audit_imu_timing.py", (), "audit device-time cadence and camera/IMU timing"),
