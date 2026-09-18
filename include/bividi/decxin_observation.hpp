@@ -18,6 +18,7 @@ struct ObservationContext {
     std::string configuration_revision;
     std::string camera_a_stream_id = "camera_a";
     std::string camera_b_stream_id = "camera_b";
+    std::string stereo_pair_id = "stereo0";
     std::string camera_clock_id = "decxin.camera";
     std::string imu_clock_id = "decxin.imu";
 };
@@ -25,7 +26,8 @@ struct ObservationContext {
 // Convert a leased DECXIN decode result into the platform-independent #11
 // observation contract. Raw IMU counts/timestamps are preserved; SI values are
 // intentionally left unavailable until an explicit measured/imported inertial
-// calibration owns that conversion.
+// calibration owns that conversion. Pair synchronization remains UNKNOWN here:
+// a protocol/vendor claim is not upgraded to measured runtime evidence.
 [[nodiscard]] SensorObservation to_sensor_observation(
     const DecodedFrame& decoded,
     const ObservationContext& context);
