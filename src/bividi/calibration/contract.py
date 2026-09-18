@@ -22,6 +22,7 @@ OutputRole = Literal[
     "machine-evidence-json-and-human-markdown",
     "interop-yaml-and-machine-manifest",
     "staging-bundle-and-machine-manifest",
+    "observation-csv-and-machine-manifest",
 ]
 PolicyRole = Literal[
     "named-source-required-for-explicit-gates",
@@ -37,6 +38,7 @@ PolicyRole = Literal[
     "structural-provenance-gate-no-numerical-policy",
     "measured-fields-required-synthetic-opt-in",
     "measured-evidence-required-synthetic-opt-in",
+    "reviewed-external-runtime-no-acceptance-gate",
 ]
 
 
@@ -269,6 +271,32 @@ CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = 
 )
 
 
+CAMERA_IMU_TARGET_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="camera-imu",
+        name="target-observations",
+        module="bividi.calibration.kalibr_target_observations_command",
+        compatibility_tool="export_kalibr_target_observations.py",
+        output_role="observation-csv-and-machine-manifest",
+        policy_role="reviewed-external-runtime-no-acceptance-gate",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=None,
+    ),
+    CalibrationCommandContract(
+        group="camera-imu",
+        name="target-coverage",
+        module="bividi.calibration.kalibr_target_coverage_command",
+        compatibility_tool="analyze_kalibr_target_coverage.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="explicit-operator-gates-no-default-thresholds",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
@@ -279,6 +307,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + IMU_INTEROP_COMMAND_CONTRACTS
     + CAMERA_IMU_STAGING_COMMAND_CONTRACTS
     + CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS
+    + CAMERA_IMU_TARGET_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
