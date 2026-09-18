@@ -1,0 +1,69 @@
+{
+  "schema": "bividi.replay_fault_recipe.v1",
+  "seed": 0,
+  "rules": [
+    {
+      "id": "drop-source-position-10",
+      "at_source_position": 10,
+      "action": "drop",
+      "expected_disposition": "explicit_gap"
+    },
+    {
+      "id": "duplicate-source-position-20",
+      "at_source_position": 20,
+      "action": "duplicate",
+      "copies": 1,
+      "expected_disposition": "observe_fault"
+    },
+    {
+      "id": "sequence-backward-position-30",
+      "at_source_position": 30,
+      "action": "sequence_delta",
+      "delta": -2,
+      "expected_disposition": "consumer_reject"
+    },
+    {
+      "id": "host-time-backward-position-40",
+      "at_source_position": 40,
+      "action": "host_time_delta_ns",
+      "delta": -5000000,
+      "expected_disposition": "consumer_reject"
+    },
+    {
+      "id": "camera-b-missing-position-50",
+      "at_source_position": 50,
+      "action": "remove_camera",
+      "stream_id": "camera_b",
+      "expected_disposition": "consumer_degraded"
+    },
+    {
+      "id": "stereo-unsynchronized-position-50",
+      "at_source_position": 50,
+      "action": "set_stereo_synchronization",
+      "pair_id": "stereo0",
+      "state": "unsynchronized",
+      "expected_disposition": "consumer_degraded"
+    },
+    {
+      "id": "imu-time-jump-position-60",
+      "at_source_position": 60,
+      "action": "imu_sample_time_delta_us",
+      "delta": 10000,
+      "expected_disposition": "consumer_reject"
+    },
+    {
+      "id": "new-continuity-epoch-position-70",
+      "at_source_position": 70,
+      "action": "set_continuity",
+      "state": "discontinuity",
+      "epoch_delta": 1,
+      "expected_disposition": "reset_derived_pipeline"
+    },
+    {
+      "id": "drop-imu-position-80",
+      "at_source_position": 80,
+      "action": "drop_all_imu",
+      "expected_disposition": "consumer_degraded"
+    }
+  ]
+}
