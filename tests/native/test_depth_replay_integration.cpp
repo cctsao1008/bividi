@@ -149,6 +149,26 @@ bividi::ReplayFaultRule continuity_rule(std::size_t position) {
     return rule;
 }
 
+bividi::ReplayFaultRule sequence_delta_rule(std::size_t position) {
+    bividi::ReplayFaultRule rule{};
+    rule.id = "forward-sequence-gap";
+    rule.at_source_position = position;
+    rule.action = bividi::ReplayFaultAction::sequence_delta;
+    rule.expected = bividi::ReplayFaultExpectedDisposition::reset_derived_pipeline;
+    rule.delta = 2;
+    return rule;
+}
+
+bividi::ReplayFaultRule host_time_delta_rule(std::size_t position, std::int64_t delta_ns) {
+    bividi::ReplayFaultRule rule{};
+    rule.id = "host-time-evidence-shift";
+    rule.at_source_position = position;
+    rule.action = bividi::ReplayFaultAction::host_time_delta_ns;
+    rule.expected = bividi::ReplayFaultExpectedDisposition::observe_fault;
+    rule.delta = delta_ns;
+    return rule;
+}
+
 bividi::InterceptedReplaySource make_fault_replay(
     const fs::path& session_dir,
     bividi::ReplayFaultRule rule,
@@ -316,6 +336,85 @@ void test_continuity_fault_resets_before_depth(const fs::path& session_dir) {
     assert(return_to_recorded_epoch.reset_generation == 3);
 }
 
+void test_sequence_delta_fault_pins_gap_and_backward_disposition(const fs::path& session_dir) {
+    std::shared_ptr<bividi::RecipeReplayInterceptor> interceptor;
+    auto replay = make_fault_replay(session_dir, sequence_delta_rule(1), interceptor);
+    auto depth = make_depth_consumer(replay.capabilities());
+
+    bividi::SensorObservation observation;
+    assert(replay.next(observation));
+    assert(observation.sequence == 1000);
+    const auto first = depth.process(observation);
+    assert(first.processed());
+    assert(first.reset_generation == 1);
+
+    // Recorded sequence 1001 is faulted to 1003. This is a forward gap, so the
+    // per-frame depth remains computable but starts a new derived generation.
+    assert(replay.next(observation));
+    assert(observation.sequence == 1003);
+    const auto gap = depth.process(observation);
+    assert(gap.processed());
+    assert(gap.sequence_gap_detected);
+    assert(gap.reset_before_process);
+    assert(gap.reset_generation == 2);
+    assert_plane_geometry(gap.depth);
+
+    // The following recorded observation is still sequence 1002. The fault
+    // injector does not repair the source timeline, therefore the consumer
+    // rejects this backward sequence and emits no plausible geometry.
+    assert(replay.next(observation));
+    assert(observation.sequence == 1002);
+    const auto backward = depth.process(observation);
+    assert(!backward.processed());
+    assert(backward.disposition ==
+           bividi::depth::StereoDepthObservationDisposition::rejected_sequence_non_monotonic);
+    assert(backward.depth.disparity_px.empty());
+    assert(backward.depth.depth_m.empty());
+    assert(backward.depth.xyz_m.empty());
+}
+
+void test_host_timestamp_fault_preserves_evidence_without_inventing_sync(const fs::path& session_dir) {
+    constexpr std::int64_t kHostDeltaNs = 123456;
+
+    // Read the unfaulted source value so this test asserts the mutation rather
+    // than depending on a duplicated hard-coded host timestamp constant.
+    auto clean = make_replay(session_dir);
+    bividi::SensorObservation clean_observation;
+    assert(clean.next(clean_observation));
+    assert(clean.next(clean_observation));
+    assert(clean_observation.timing.host_receive.present);
+    assert(clean_observation.timing.host_receive.domain == bividi::ClockDomain::host_monotonic);
+    assert(clean_observation.timing.host_receive.unit == bividi::TimeUnit::nanoseconds);
+    const auto clean_host_ns = clean_observation.timing.host_receive.ticks;
+
+    std::shared_ptr<bividi::RecipeReplayInterceptor> interceptor;
+    auto replay = make_fault_replay(
+        session_dir,
+        host_time_delta_rule(1, kHostDeltaNs),
+        interceptor);
+    auto depth = make_depth_consumer(replay.capabilities());
+
+    bividi::SensorObservation observation;
+    assert(replay.next(observation));
+    assert(depth.process(observation).processed());
+
+    assert(replay.next(observation));
+    assert(observation.timing.host_receive.present);
+    assert(observation.timing.host_receive.ticks ==
+           clean_host_ns + static_cast<std::uint64_t>(kHostDeltaNs));
+
+    const auto result = depth.process(observation);
+    assert(result.processed());
+    assert(!result.reset_before_process);
+    assert(result.reset_generation == 1);
+    assert(result.synchronization == bividi::SynchronizationState::unknown);
+    assert_plane_geometry(result.depth);
+
+    // Host receive time is preserved fault evidence. It is not silently used
+    // as a stereo synchronization estimator or promoted to synchronized.
+    assert(interceptor->stats().triggered_rules == 1);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -334,6 +433,8 @@ int main(int argc, char** argv) {
     test_unsynchronized_fault_rejects_and_recovery_resets(session_dir);
     test_duplicate_fault_rejects_second_derived_result(session_dir);
     test_continuity_fault_resets_before_depth(session_dir);
+    test_sequence_delta_fault_pins_gap_and_backward_disposition(session_dir);
+    test_host_timestamp_fault_preserves_evidence_without_inventing_sync(session_dir);
 
     std::cout << "synthetic replay -> normalized observation -> depth/fault integration: PASS\n";
     return 0;
