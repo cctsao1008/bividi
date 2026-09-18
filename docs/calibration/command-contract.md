@@ -1,6 +1,6 @@
 # Calibration command behavior contract
 
-Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issues #89, #91, #93, #95, and #97.
+Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issues #89, #91, #93, #95, #97, and #99.
 
 This document defines the command-level behavior that `bividi-calib` must preserve while implementations move between compatibility scripts and installed package modules. It does **not** define calibration math, artifact schemas, or product/lab thresholds.
 
@@ -18,6 +18,8 @@ The package-native `imu timing-audit`, `imu stationary`, `imu allan`, `imu six-p
 
 `imu config-consistency` differs: it remains evidence-only when no thresholds are supplied, but explicit operator thresholds can produce PASS/FAIL. A completed `FAIL` is exit `3`; malformed input, schema/hash errors, missing required evidence, or other command-domain failures are exit `2`.
 
+`imu provenance` is a structural/hash gate. A completed verification with one or more gate findings returns `3`; parser/input/read/domain errors return `2`; PASS returns `0`.
+
 ## Provenance identity
 
 When a migrated command emits a versioned machine-readable artifact with a `provenance` object, package migration preserves the **historical compatibility tool name** rather than substituting the Python package-module filename.
@@ -31,6 +33,7 @@ Current frozen identities:
 | `stereo repeatability` | `compare_stereo_calibrations.py` | `1` |
 | `stereo promote` | `stereo_calibration_provenance.py` | `1` |
 | `stereo campaign` | `plan_stereo_calibration_campaign.py` | `1` |
+| `imu provenance` | `tools/imu_calibration_provenance.py` | `1` |
 
 `stereo report` is presentation-only Markdown and does not create a new versioned evidence artifact merely to attach provenance.
 
@@ -48,7 +51,7 @@ For package-native stereo evidence producers/reviewers:
 - `report` only renders existing status/policy information. It cannot promote, downgrade, or invent evidence.
 - `campaign` may record a policy source as orchestration metadata, but its presence/schema audit does not perform quality/hash/policy verification.
 
-For package-native IMU analysis leaves:
+For package-native IMU leaves:
 
 - `imu timing-audit --gap-threshold-us` is an explicit analysis parameter used only to count long intervals. It is **not** an acceptance gate and does not create PASS/FAIL evidence.
 - `imu stationary` never infers sensor full-scale from the vendor demo. Supplying `--accel-g-per-count` and/or `--gyro-dps-per-count` requires an explicit `--scale-source`; that source identifies the conversion assumption/evidence and is not a product acceptance policy.
@@ -65,6 +68,8 @@ For package-native IMU analysis leaves:
 - `imu config-consistency` may become an explicit gate only when the operator supplies `--max-accel-scale-error-pct`, `--max-gyro-scale-error-pct`, `--max-odr-error-pct`, and/or `--require-gyro-scale`.
 - The characterized config-consistency format does **not** carry a separate named policy-source field. Package migration preserves that boundary rather than inventing one merely for uniformity.
 - Config consistency is physical-response evidence, not sensor-register readback. Filter settings remain declared provenance with `physically_verified=false` unless a separate readback/transfer-function experiment is added.
+- `imu provenance` has no numerical policy. Its `basic`, `full-imu`, and `promotion` profiles verify structure, role completeness, recorded compatibility, non-placeholder provenance, measured-vs-synthetic provenance, and file integrity.
+- A current `imu provenance --profile promotion` PASS does **not** mean the underlying analysis values satisfy an accuracy requirement. It does not inspect the analysis reports' numerical status and does not currently require `config_consistency`; package migration intentionally preserves that boundary.
 
 ## Output roles
 
@@ -84,6 +89,7 @@ The consolidated CLI intentionally does not force all leaves into one output sha
 | `imu six-position` | Markdown stdout + optional pose-summary CSV / machine JSON / Markdown files | Six-pose accelerometer gravity/axis candidate model plus static gyro mean evidence; no gyro axis/sign claim and no automatic promotion. |
 | `imu gyro-rotation` | Markdown stdout + optional run-summary CSV / machine JSON / Markdown files | Controlled-turn gyro axis/sign/symmetry evidence plus optional explicit-angle sensitivity model and accel↔gyro mapping comparison; candidate only. |
 | `imu config-consistency` | Markdown stdout + optional machine JSON / Markdown files | SHA-bound declared-vs-measured range/ODR response consistency; explicit thresholds may gate, but this is not register readback or final promotion. |
+| `imu provenance` | machine manifest JSON + gate result | SHA-bound structural/provenance compatibility and promotability evidence; not numerical quality acceptance. |
 
 Machine-readable evidence and gate artifacts remain authoritative where a gate exists. Human-readable output is a view over the analysis/evidence, and orchestration output describes what should exist rather than proving that the evidence is acceptable.
 
@@ -109,6 +115,8 @@ For `imu six-position`, the characterized gravity/axis implementation is `bividi
 For `imu gyro-rotation`, the characterized controlled-turn implementation is `bividi.calibration.imu_gyro_rotation`; `bividi.calibration.imu_gyro_rotation_command` is likewise command-only. It does not alter device-time trapezoidal integration, signed-permutation inference, optional sensitivity estimation, accelerometer↔gyroscope mapping comparison, report content, or candidate-only interpretation.
 
 For `imu config-consistency`, the characterized response-consistency implementation is `bividi.calibration.imu_config_consistency`; `bividi.calibration.imu_config_consistency_command` separates usage/domain failures from completed evaluated FAIL. This corrects the historical source-script exit-code collision (`3` for domain error, `2` for FAIL) without changing report status, thresholds, hashes, quantizer math, or evidence interpretation.
+
+For `imu provenance`, the characterized implementation is `bividi.calibration.imu_provenance`; `bividi.calibration.imu_provenance_command` maps input/domain failures to exit `2` while preserving exit `3` for a completed failed gate. It does not change manifest schema, required roles, verification profiles, hashes, provenance fields, or the structural-vs-quality interpretation.
 
 ## Frozen package-native set
 
@@ -139,4 +147,8 @@ IMU configuration consistency gate:
 
 - `imu config-consistency`
 
-Heavier OpenCV workbench commands and the remaining IMU/camera↔IMU leaves can adopt this contract incrementally after their existing behavior is characterized. They should not be normalized by changing measurement or evidence semantics merely to make the table look uniform.
+IMU structural provenance gate:
+
+- `imu provenance`
+
+Heavier OpenCV workbench commands and the remaining camera↔IMU leaves can adopt this contract incrementally after their existing behavior is characterized. They should not be normalized by changing measurement or evidence semantics merely to make the table look uniform.
