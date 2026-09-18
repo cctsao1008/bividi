@@ -255,6 +255,10 @@ if(BIVIDI_BUILD_TESTS)
         add_executable(bividi_replay_fault_tests tests/native/test_replay_faults.cpp)
         target_link_libraries(bividi_replay_fault_tests PRIVATE bividi_replay)
         add_test(NAME bividi_replay_fault_tests COMMAND bividi_replay_fault_tests)
+
+        add_executable(bividi_replay_integrity_tests tests/native/test_replay_integrity.cpp)
+        target_link_libraries(bividi_replay_integrity_tests PRIVATE bividi_replay)
+        add_test(NAME bividi_replay_integrity_tests COMMAND bividi_replay_integrity_tests)
     endif()
 
     if(TARGET bividi_nori_opencv)
