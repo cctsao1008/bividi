@@ -307,6 +307,25 @@ if(BIVIDI_BUILD_TESTS)
                 bividi_synthetic_replay_tests
                 PROPERTIES DEPENDS bividi_synthetic_rig_fixture_generate
             )
+
+            if(TARGET bividi_depth)
+                add_executable(
+                    bividi_depth_replay_integration_tests
+                    tests/native/test_depth_replay_integration.cpp
+                )
+                target_link_libraries(
+                    bividi_depth_replay_integration_tests
+                    PRIVATE bividi_replay bividi_depth
+                )
+                add_test(
+                    NAME bividi_depth_replay_integration_tests
+                    COMMAND bividi_depth_replay_integration_tests ${_bividi_synthetic_rig_fixture}
+                )
+                set_tests_properties(
+                    bividi_depth_replay_integration_tests
+                    PROPERTIES DEPENDS bividi_synthetic_rig_fixture_generate
+                )
+            endif()
         endif()
     endif()
 
