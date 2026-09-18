@@ -1,6 +1,6 @@
 # Bividi Recording and Replay Contract
 
-Status: native `SensorObservation` replay implemented; explicit replay interception seam implemented; MCAP storage adapter remains follow-up work in Issue #31.
+Status: native `SensorObservation` replay and explicit replay interception are implemented; the first Bividi-native `SensorObservation` MCAP semantic codec is implemented. Direct MCAP-backed replay/live-recording integration remains follow-up work in Issue #31.
 
 ## Purpose
 
@@ -17,7 +17,7 @@ SensorObservation + SensorCapabilities
         |
         +--> explicit replay interception decorator (#59)
         |
-        +--> MCAP native/storage adapter          [follow-up]
+        +--> Bividi-native SensorObservation MCAP codec v1
         |
         +--> ROS2 rosbag2 + MCAP interoperability adapter
         |
@@ -144,28 +144,28 @@ AI / semantic interpretation
 
 These may coexist in one eventual MCAP file, but must use separate logical channels/schemas so replay cannot confuse a derived result with the original capture.
 
-## Channel-family direction for MCAP
+## Bividi-native MCAP codec v1
 
-The eventual MCAP adapter should map the frozen observation boundary into versioned channels roughly along these roles:
+The first native MCAP storage codec is defined in [`mcap-observation.md`](mcap-observation.md). It maps the frozen `SensorObservation` v1 boundary to a versioned MCAP profile while preserving producer timing inside the observation envelope.
+
+The first channel family is intentionally narrow:
 
 ```text
-/bividi/source/<id>/observation
-/bividi/source/<id>/camera/<stream-id>
-/bividi/source/<id>/imu/<sensor-id>
-/bividi/source/<id>/status
-/bividi/source/<id>/calibration
-/bividi/source/<id>/derived/disparity
-/bividi/source/<id>/derived/depth
-/bividi/source/<id>/derived/quality
+/bividi/observation
+/bividi/source/<source-id>/camera/<stream-id>
 ```
 
-Exact serialized message schemas remain an Issue #31 follow-up. Channel naming must not alter the C++ observation semantics.
+The observation envelope preserves sequence, continuity, validity, timing-domain evidence, calibration/configuration identity, IMU data, camera metadata, and stereo synchronization state. Camera byte payloads remain separate binary MCAP messages with explicit byte-count and SHA-256 binding.
+
+MCAP `log_time` / `publish_time` are a deterministic **container-order clock only** in this profile. They are not host receive time, device exposure/IMU time, UTC, or replay scheduling time. The original clocks remain explicit in the Bividi payload.
+
+Direct C++ live recording to this profile and direct MCAP-backed `ReplaySource` integration remain Issue #31 follow-up slices; the storage/semantic contract does not depend on either runtime integration.
 
 ROS2 calibration interoperability currently uses standard `sensor_msgs/msg/Image` and `sensor_msgs/msg/Imu` topics because external robotics tools understand those message contracts. Those ROS2 topic/message types remain adapters; they do not replace Bividi's own observation schema.
 
 ## Timestamp policy
 
-Preserve producer timestamps explicitly and do not replace them with playback time.
+Preserve producer timestamps explicitly and do not replace them with playback or storage time.
 
 Current native replay keeps distinct:
 
@@ -173,11 +173,12 @@ Current native replay keeps distinct:
 - device exposure start and exposure end;
 - device IMU sample time;
 - finite-width raw timestamp evidence;
-- optional replay scheduling time.
+- optional replay scheduling time;
+- MCAP container-order time when the native MCAP adapter is used.
 
 There is deliberately no automatic camera visual-frame timestamp synthesized from exposure start, midpoint, or exposure end. Any algorithm requiring such a reference must select and document that semantic explicitly.
 
-When exporting a calibration session to ROS2/MCAP, the explicitly selected sensor-derived timestamp is used for both the ROS message header and rosbag2 record timestamp. Host-arrival time is not silently substituted.
+When exporting a calibration session to ROS2/MCAP, the explicitly selected sensor-derived timestamp is used for both the ROS message header and rosbag2 record timestamp. That calibration interoperability convention is separate from the Bividi-native MCAP profile, whose MCAP record time is deliberately non-semantic container ordering.
 
 ## Integrity checks
 
@@ -191,7 +192,9 @@ The native replay importer rejects evidence that cannot be reconstructed consist
 - unsupported image representations;
 - mid-session image geometry/format changes.
 
-Replay success proves that the recording obeys the replay contract. It does not prove physical synchronization, calibration accuracy, or hardware quality.
+The native MCAP codec independently rejects malformed observation envelopes, unsupported profile/schema versions, non-tight image representations in v1, missing/duplicate/unreferenced camera payloads, and byte-count/SHA-256 mismatches.
+
+Replay or MCAP round-trip success proves that the software/storage contract is obeyed. It does not prove physical synchronization, calibration accuracy, or hardware quality.
 
 ## Provenance
 
@@ -209,7 +212,7 @@ Transport conversion also needs provenance. A ROS2/MCAP or ROS1 export should re
 
 ## Test strategy
 
-Hardware-independent replay fixtures verify:
+Hardware-independent replay/MCAP fixtures verify:
 
 ```text
 recorded mono stereo + raw IMU
@@ -223,9 +226,14 @@ recorded session
   → InterceptedReplaySource
   → hold / duplicate / delayed emission / drop
   → deterministic source-position and reset assertions
+
+SensorObservation fixture
+  → Bividi-native MCAP
+  → SensorObservation
+  → semantic digest + exact byte/timestamp equality
 ```
 
-The first fixture intentionally includes an IMU-only timeline observation between image-bearing observations to ensure `frame_stride` does not collapse source chronology. The interception fixture proves the seam can change output cardinality/order while the original source timeline and reset behavior remain explicit.
+The replay fixture intentionally includes an IMU-only timeline observation between image-bearing observations to ensure `frame_stride` does not collapse source chronology. The interception fixture proves the seam can change output cardinality/order while the original source timeline and reset behavior remain explicit. The MCAP fixture covers GRAY8 stereo, IMU-only, BGR24, invalid raw IMU, and preserved `unknown` stereo synchronization.
 
 Physical AR0234 validation remains owned by #35, #8, and #47 evidence campaigns.
 
@@ -238,7 +246,8 @@ Physical AR0234 validation remains owned by #35, #8, and #47 evidence campaigns.
 - ROS2 messages are not the Bividi core API.
 - ROS1 `.bag` is not the preferred Bividi recording format.
 - Replay scheduling time is not original sensor time.
+- MCAP container-order time is not producer/device time.
 - Replay does not manufacture SI IMU values from unverified vendor-demo scaling.
 - Replay does not upgrade unknown stereo synchronization into measured synchronization.
-- Recording or replay success does not prove camera synchronization or timing quality.
+- Recording, replay, or MCAP round-trip success does not prove camera synchronization or timing quality.
 - Large media should not be committed to normal Git history.
