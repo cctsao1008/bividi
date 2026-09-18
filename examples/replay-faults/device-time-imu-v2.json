@@ -1,0 +1,37 @@
+{
+  "schema": "bividi.replay_fault_recipe.v2",
+  "seed": 0,
+  "rules": [
+    {
+      "id": "camera-b-device-time-backward",
+      "at_source_position": 10,
+      "action": "camera_exposure_time_delta_us",
+      "stream_id": "camera_b",
+      "delta": -500,
+      "expected_disposition": "consumer_degraded"
+    },
+    {
+      "id": "imu-sample-time-backward",
+      "at_source_position": 10,
+      "action": "imu_sample_time_delta_at_index_us",
+      "imu_index": 1,
+      "delta": -1000,
+      "expected_disposition": "consumer_reject"
+    },
+    {
+      "id": "duplicate-imu-sample",
+      "at_source_position": 11,
+      "action": "duplicate_imu_sample",
+      "imu_index": 0,
+      "copies": 1,
+      "expected_disposition": "consumer_reject"
+    },
+    {
+      "id": "drop-imu-sample",
+      "at_source_position": 12,
+      "action": "drop_imu_sample",
+      "imu_index": 1,
+      "expected_disposition": "explicit_gap"
+    }
+  ]
+}
