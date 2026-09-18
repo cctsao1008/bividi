@@ -1,7 +1,7 @@
 """Central calibration tool self-test manifest/runner for Issue #60.
 
 The runner deliberately invokes the existing compatibility entry points rather
-than importing their optional dependencies into the base Bividi package.  It is
+than importing their optional dependencies into the base Bividi package. It is
 therefore a CI/developer contract runner, not a calibration algorithm surface.
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -74,6 +75,19 @@ def validate_manifest(root: Path) -> list[str]:
             errors.append(f"malformed self-test entry: {case!r}")
         if not (root / "tools" / case.script).is_file():
             errors.append(f"missing self-test tool for {case.name}: tools/{case.script}")
+
+    schema_dir = root / "calibration" / "schemas"
+    schema_paths = sorted(schema_dir.glob("*.json")) if schema_dir.is_dir() else []
+    if not schema_paths:
+        errors.append("no calibration JSON schemas found under calibration/schemas")
+    for path in schema_paths:
+        try:
+            with path.open("r", encoding="utf-8") as stream:
+                value = json.load(stream)
+            if not isinstance(value, dict):
+                errors.append(f"calibration schema root must be an object: {path.relative_to(root)}")
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            errors.append(f"cannot parse calibration schema {path.relative_to(root)}: {exc}")
     return errors
 
 
