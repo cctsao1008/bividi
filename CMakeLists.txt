@@ -109,6 +109,7 @@ if(BIVIDI_WITH_OPENCV)
     if(OpenCV_FOUND)
         add_library(bividi_replay STATIC
             src/native/replay_opencv.cpp
+            src/native/replay_interceptor.cpp
             src/native/replay_session.cpp
         )
         target_include_directories(bividi_replay PUBLIC include ${OpenCV_INCLUDE_DIRS})
