@@ -47,6 +47,7 @@ Commands already migrated under `src/bividi/` execute from the installed package
 bividi-calib stereo target-scale --help
 bividi-calib stereo geometry-review --help
 bividi-calib stereo repeatability --help
+bividi-calib stereo promote --help
 bividi-calib stereo report --help
 bividi-calib stereo campaign --help
 ```
@@ -127,7 +128,7 @@ The leaf implementation exit code is preserved by the router.
 | `stereo target-scale` | installed `bividi.calibration.target_scale`; legacy wrapper `tools/review_calibration_target_scale.py` |
 | `stereo geometry-review` | installed `bividi.calibration.stereo_geometry`; legacy wrapper `tools/review_stereo_geometry.py` |
 | `stereo repeatability` | installed `bividi.calibration.stereo_repeatability`; legacy wrapper `tools/compare_stereo_calibrations.py` |
-| `stereo promote` | `tools/stereo_calibration_provenance.py` |
+| `stereo promote` | installed `bividi.calibration.stereo_provenance`; legacy wrapper `tools/stereo_calibration_provenance.py` |
 | `stereo report` | installed `bividi.calibration.stereo_report`; legacy wrapper `tools/render_stereo_calibration_report.py` |
 | `stereo campaign` | installed `bividi.calibration.stereo_campaign`; legacy wrapper `tools/plan_stereo_calibration_campaign.py` |
 | `imu timing-audit` | `tools/audit_imu_timing.py` |
@@ -146,7 +147,11 @@ The leaf implementation exit code is preserved by the router.
 | `camera-imu promote` | `tools/camera_imu_calibration_provenance.py` |
 | `camera-imu campaign` | `tools/plan_camera_imu_physical_campaign.py` |
 
-The `target-scale`, `geometry-review`, `repeatability`, `report`, and `campaign` migrations are package-native stereo leaves. Their legacy wrappers delegate to installed modules while preserving existing evidence schemas/semantics and historical command behavior. The campaign planner still does not invent numeric limits: it only defines workflow/dependency/evidence expectations and a presence/schema audit; quality/hash/policy verification remains owned by the evidence tools.
+The `target-scale`, `geometry-review`, `repeatability`, `promote`, `report`, and `campaign` migrations are package-native stereo leaves. Their legacy wrappers delegate to installed modules while preserving existing evidence schemas/semantics and historical command behavior.
+
+The promotion gate remains a gate rather than a calibration algorithm. It preserves the existing `integrity` / `review` / `promotion` profiles and `INTEGRITY_OK` / `REVIEWABLE` / `PROMOTION_READY` dispositions; verifies SHA-256 evidence bindings and cross-links; and, for promotion, requires measured provenance, immutable acquisition evidence, verified camera mapping, explicit PASS quality evidence with gates, and named policy sources. It still owns no numeric calibration thresholds.
+
+The campaign planner still does not invent numeric limits: it only defines workflow/dependency/evidence expectations and a presence/schema audit; quality/hash/policy verification remains owned by the evidence tools.
 
 ## Central self-test manifest
 
@@ -170,6 +175,6 @@ The router and self-test manifest use only the Python standard library. Optional
 
 ## Current limitations / next #60 slices
 
-Five dependency-light stereo implementations (`stereo target-scale`, `stereo geometry-review`, `stereo repeatability`, `stereo report`, and `stereo campaign`) have moved under the installed package. `stereo promote` remains the major dependency-light stereo evidence leaf still routed through `tools/`; the OpenCV workbench commands remain intentionally heavier.
+Six dependency-light stereo implementations (`stereo target-scale`, `stereo geometry-review`, `stereo repeatability`, `stereo promote`, `stereo report`, and `stereo campaign`) have moved under the installed package. The OpenCV stereo workbench commands remain intentionally heavier and still use the compatibility source-tree route.
 
-The next structural slice should assess/migrate the stereo provenance/promotion gate. After that, there are enough package-native evidence producers/consumers/orchestrators to freeze the common command behavior contract—exit-code vocabulary, stable historical tool/version provenance, policy-source semantics, and JSON/Markdown output roles—without changing existing artifact schemas or evidence gates. Heavier OpenCV/ROS-facing implementations should remain isolated from unrelated commands.
+With package-native evidence review, repeatability, promotion, rendering, and orchestration now represented, the next #60 structural step is to freeze the common command behavior contract: exit-code vocabulary, stable historical tool/version provenance, policy-source semantics, and machine-readable versus human-readable output roles. That contract should be extracted only from behavior already demonstrated by the migrated leaves; it must not change artifact schemas, gate semantics, or optional-dependency boundaries. Heavier OpenCV/ROS-facing implementations should remain isolated from unrelated commands.
