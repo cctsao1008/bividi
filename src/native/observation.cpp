@@ -107,6 +107,12 @@ ConformanceResult validate_observation(
         for (const auto& error : cap_result.errors) {
             result.add_error("capabilities: " + error);
         }
+        if (capabilities->timing.host_receive_monotonic &&
+            observation.source_state == SourceState::available &&
+            observation.validity != ObservationValidity::invalid &&
+            !observation.timing.host_receive.present) {
+            result.add_error("observation is missing required host receive monotonic time");
+        }
     }
 
     std::set<std::string> camera_ids;
@@ -118,6 +124,9 @@ ConformanceResult validate_observation(
             result.add_error("duplicate camera observation: " + camera.stream_id);
         }
 
+        if (!camera.frame_time.structurally_valid()) {
+            result.add_error(prefix + ".frame_time is malformed");
+        }
         validate_exposure(camera.exposure, result, prefix);
 
         if (camera.validity != ObservationValidity::invalid && !camera.usable()) {
@@ -138,6 +147,14 @@ ConformanceResult validate_observation(
                 }
             }
 
+            if (capabilities->timing.device_frame_time &&
+                camera.validity != ObservationValidity::invalid) {
+                if (!camera.frame_time.present) {
+                    result.add_error(prefix + " is missing required device frame time");
+                } else if (camera.frame_time.domain != ClockDomain::device) {
+                    result.add_error(prefix + ".frame_time must use device clock domain");
+                }
+            }
             if (capabilities->timing.exposure_start_end &&
                 camera.validity != ObservationValidity::invalid &&
                 !camera.exposure.complete()) {
@@ -175,6 +192,20 @@ ConformanceResult validate_observation(
             sample.validity != ObservationValidity::invalid &&
             sample.sample_time.domain != ClockDomain::device) {
             result.add_error(prefix + " must use device clock domain");
+        }
+    }
+
+    std::set<std::string> pair_ids;
+    for (const auto& pair : observation.stereo_pairs) {
+        if (pair.pair_id.empty()) {
+            result.add_error("stereo pair status requires non-empty pair_id");
+            continue;
+        }
+        if (!pair_ids.insert(pair.pair_id).second) {
+            result.add_error("duplicate stereo pair status: " + pair.pair_id);
+        }
+        if (capabilities != nullptr && capabilities->find_stereo_pair(pair.pair_id) == nullptr) {
+            result.add_error("stereo pair status references undeclared pair: " + pair.pair_id);
         }
     }
 
