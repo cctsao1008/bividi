@@ -48,11 +48,15 @@ void test_clock_domains_remain_distinct() {
     };
     observation.timing.replay_schedule = {
         50,
-        bividi::TimeUnit::milliseconds,
+        bividi::TimeUnit::microseconds,
         bividi::ClockDomain::replay,
         "replay.timeline",
         true,
     };
+
+    const auto result = bividi::validate_observation(observation);
+    assert(result.ok);
+    assert(observation.timing.host_receive.domain != observation.timing.replay_schedule.domain);
 }
 
 void test_decxin_normalization() {
@@ -168,6 +172,7 @@ void test_conformance_rejects_wrong_topology_and_clock() {
 
 int main() {
     test_capability_validation();
+    test_clock_domains_remain_distinct();
     test_decxin_normalization();
     test_conformance_rejects_wrong_topology_and_clock();
     std::cout << "bividi observation contract test: PASS\n";
