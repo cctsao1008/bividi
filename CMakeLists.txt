@@ -259,6 +259,39 @@ if(BIVIDI_BUILD_TESTS)
         add_executable(bividi_replay_integrity_tests tests/native/test_replay_integrity.cpp)
         target_link_libraries(bividi_replay_integrity_tests PRIVATE bividi_replay)
         add_test(NAME bividi_replay_integrity_tests COMMAND bividi_replay_integrity_tests)
+
+        find_package(Python3 QUIET COMPONENTS Interpreter)
+        if(Python3_Interpreter_FOUND)
+            set(_bividi_synthetic_rig_fixture "${CMAKE_CURRENT_BINARY_DIR}/synthetic-rig-native-replay")
+
+            add_executable(bividi_synthetic_replay_tests tests/native/test_synthetic_replay.cpp)
+            target_link_libraries(bividi_synthetic_replay_tests PRIVATE bividi_replay)
+
+            add_test(
+                NAME bividi_synthetic_rig_fixture_clean
+                COMMAND ${CMAKE_COMMAND} -E rm -rf ${_bividi_synthetic_rig_fixture}
+            )
+            add_test(
+                NAME bividi_synthetic_rig_fixture_generate
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_synthetic_sensorrig.py
+                    ${_bividi_synthetic_rig_fixture}
+                    --scenario static-plane
+                    --frames 3
+            )
+            set_tests_properties(
+                bividi_synthetic_rig_fixture_generate
+                PROPERTIES DEPENDS bividi_synthetic_rig_fixture_clean
+            )
+            add_test(
+                NAME bividi_synthetic_replay_tests
+                COMMAND bividi_synthetic_replay_tests ${_bividi_synthetic_rig_fixture}
+            )
+            set_tests_properties(
+                bividi_synthetic_replay_tests
+                PROPERTIES DEPENDS bividi_synthetic_rig_fixture_generate
+            )
+        endif()
     endif()
 
     if(TARGET bividi_nori_opencv)
