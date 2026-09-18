@@ -23,6 +23,7 @@ OutputRole = Literal[
     "interop-yaml-and-machine-manifest",
     "staging-bundle-and-machine-manifest",
     "observation-csv-and-machine-manifest",
+    "calibration-artifact-and-import-manifest",
 ]
 PolicyRole = Literal[
     "named-source-required-for-explicit-gates",
@@ -39,6 +40,7 @@ PolicyRole = Literal[
     "measured-fields-required-synthetic-opt-in",
     "measured-evidence-required-synthetic-opt-in",
     "reviewed-external-runtime-no-acceptance-gate",
+    "candidate-import-no-acceptance-gate",
 ]
 
 
@@ -297,6 +299,21 @@ CAMERA_IMU_TARGET_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+CAMERA_IMU_IMPORT_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="camera-imu",
+        name="import-kalibr",
+        module="bividi.calibration.kalibr_camera_imu_import_command",
+        compatibility_tool="import_kalibr_camera_imu.py",
+        output_role="calibration-artifact-and-import-manifest",
+        policy_role="candidate-import-no-acceptance-gate",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=None,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
@@ -308,6 +325,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + CAMERA_IMU_STAGING_COMMAND_CONTRACTS
     + CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS
     + CAMERA_IMU_TARGET_COMMAND_CONTRACTS
+    + CAMERA_IMU_IMPORT_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
