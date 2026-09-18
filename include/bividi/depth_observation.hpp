@@ -123,12 +123,13 @@ public:
         if (!cap_validation.ok) {
             throw std::invalid_argument("depth observation adapter requires conforming SensorCapabilities");
         }
-        pair_ = capabilities_.find_stereo_pair(pair_id_);
-        if (pair_ == nullptr) {
+        const auto* selected_pair = capabilities_.find_stereo_pair(pair_id_);
+        if (selected_pair == nullptr) {
             throw std::invalid_argument("depth observation adapter pair_id is not present in capabilities");
         }
-        const auto* camera_a = capabilities_.find_camera(pair_->camera_a_stream_id);
-        const auto* camera_b = capabilities_.find_camera(pair_->camera_b_stream_id);
+        pair_ = *selected_pair;
+        const auto* camera_a = capabilities_.find_camera(pair_.camera_a_stream_id);
+        const auto* camera_b = capabilities_.find_camera(pair_.camera_b_stream_id);
         if (camera_a == nullptr || camera_b == nullptr) {
             throw std::invalid_argument("depth observation adapter stereo pair references missing camera capability");
         }
@@ -145,7 +146,7 @@ public:
     }
 
     [[nodiscard]] const SensorCapabilities& capabilities() const noexcept { return capabilities_; }
-    [[nodiscard]] const StereoPairInfo& stereo_pair() const noexcept { return *pair_; }
+    [[nodiscard]] const StereoPairInfo& stereo_pair() const noexcept { return pair_; }
     [[nodiscard]] const StereoDepthCalibration& calibration() const noexcept { return calibration_; }
     [[nodiscard]] const StereoDepthObservationPolicy& policy() const noexcept { return policy_; }
     [[nodiscard]] std::uint64_t reset_generation() const noexcept { return reset_generation_; }
@@ -173,7 +174,7 @@ public:
         const bool explicit_boundary =
             observation.continuity != ContinuityState::continuous ||
             (have_epoch_ && observation.continuity_epoch != last_epoch_);
-        if (explicit_boundary) {
+        if (!reset_now && explicit_boundary) {
             clear_chronology();
             ++reset_generation_;
             reset_now = true;
@@ -251,8 +252,8 @@ public:
                 "stereo-depth observation calibration identity differs from selected artifact", reset_now);
         }
 
-        const auto* camera_a = find_camera(observation, pair_->camera_a_stream_id);
-        const auto* camera_b = find_camera(observation, pair_->camera_b_stream_id);
+        const auto* camera_a = find_camera(observation, pair_.camera_a_stream_id);
+        const auto* camera_b = find_camera(observation, pair_.camera_b_stream_id);
         if (camera_a == nullptr || camera_b == nullptr) {
             return reject(
                 std::move(result), observation,
@@ -372,7 +373,7 @@ private:
 
     SensorCapabilities capabilities_;
     std::string pair_id_;
-    const StereoPairInfo* pair_ = nullptr;
+    StereoPairInfo pair_{};
     StereoDepthCalibration calibration_;
     StereoDepthProcessor processor_;
     StereoDepthObservationPolicy policy_{};
