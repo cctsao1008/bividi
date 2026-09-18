@@ -45,92 +45,59 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
     CalibrationCommand("stereo", "validate", "stereo_calibration_workbench.py", ("validate",), "validate a stereo calibration artifact"),
     CalibrationCommand("stereo", "rectify", "stereo_calibration_workbench.py", ("rectify",), "render a rectification inspection view"),
     CalibrationCommand(
-        "stereo",
-        "target-scale",
-        None,
-        summary="review measured target print scale",
-        module="bividi.calibration.target_scale",
+        "stereo", "target-scale", None,
+        summary="review measured target print scale", module="bividi.calibration.target_scale",
     ),
     CalibrationCommand(
-        "stereo",
-        "geometry-review",
-        None,
-        summary="review physical stereo geometry evidence",
-        module="bividi.calibration.stereo_geometry",
+        "stereo", "geometry-review", None,
+        summary="review physical stereo geometry evidence", module="bividi.calibration.stereo_geometry",
     ),
     CalibrationCommand(
-        "stereo",
-        "repeatability",
-        None,
-        summary="compare independent stereo calibrations",
-        module="bividi.calibration.stereo_repeatability",
+        "stereo", "repeatability", None,
+        summary="compare independent stereo calibrations", module="bividi.calibration.stereo_repeatability",
     ),
     CalibrationCommand(
-        "stereo",
-        "promote",
-        None,
-        summary="run stereo evidence/promotion gate",
-        module="bividi.calibration.stereo_provenance",
+        "stereo", "promote", None,
+        summary="run stereo evidence/promotion gate", module="bividi.calibration.stereo_provenance",
     ),
     CalibrationCommand(
-        "stereo",
-        "report",
-        None,
-        summary="render a human stereo calibration report",
-        module="bividi.calibration.stereo_report",
+        "stereo", "report", None,
+        summary="render a human stereo calibration report", module="bividi.calibration.stereo_report",
     ),
     CalibrationCommand(
-        "stereo",
-        "campaign",
-        None,
-        summary="plan/audit a physical stereo campaign",
-        module="bividi.calibration.stereo_campaign",
+        "stereo", "campaign", None,
+        summary="plan/audit a physical stereo campaign", module="bividi.calibration.stereo_campaign",
     ),
 
     # IMU / #47
     CalibrationCommand(
-        "imu",
-        "timing-audit",
-        None,
-        summary="audit device-time cadence and camera/IMU timing",
-        module="bividi.calibration.imu_timing",
+        "imu", "timing-audit", None,
+        summary="audit device-time cadence and camera/IMU timing", module="bividi.calibration.imu_timing",
     ),
     CalibrationCommand(
-        "imu",
-        "stationary",
-        None,
-        summary="analyze stationary bias/statistics",
-        module="bividi.calibration.imu_stationary",
+        "imu", "stationary", None,
+        summary="analyze stationary bias/statistics", module="bividi.calibration.imu_stationary",
     ),
     CalibrationCommand(
-        "imu",
-        "allan",
-        None,
-        summary="analyze Allan deviation/noise evidence",
-        module="bividi.calibration.imu_allan_command",
+        "imu", "allan", None,
+        summary="analyze Allan deviation/noise evidence", module="bividi.calibration.imu_allan_command",
     ),
     CalibrationCommand(
-        "imu",
-        "six-position",
-        None,
-        summary="analyze six-position accelerometer evidence",
-        module="bividi.calibration.imu_six_position_command",
+        "imu", "six-position", None,
+        summary="analyze six-position accelerometer evidence", module="bividi.calibration.imu_six_position_command",
     ),
     CalibrationCommand(
-        "imu",
-        "gyro-rotation",
-        None,
-        summary="analyze controlled gyro rotations",
-        module="bividi.calibration.imu_gyro_rotation_command",
+        "imu", "gyro-rotation", None,
+        summary="analyze controlled gyro rotations", module="bividi.calibration.imu_gyro_rotation_command",
     ),
     CalibrationCommand(
-        "imu",
-        "config-consistency",
-        None,
-        summary="compare declared configuration with measured response",
-        module="bividi.calibration.imu_config_consistency_command",
+        "imu", "config-consistency", None,
+        summary="compare declared configuration with measured response", module="bividi.calibration.imu_config_consistency_command",
     ),
-    CalibrationCommand("imu", "provenance", "imu_calibration_provenance.py", (), "run IMU provenance/promotion gate"),
+    CalibrationCommand(
+        "imu", "provenance", None,
+        summary="run IMU provenance/promotion gate", module="bividi.calibration.imu_provenance_command",
+    ),
     CalibrationCommand("imu", "export-kalibr", "export_kalibr_imu.py", (), "export measured IMU parameters for Kalibr"),
 
     # Camera/IMU / #47
@@ -154,14 +121,13 @@ _GROUPS = tuple(sorted({item.group for item in _COMMANDS}))
 
 def commands() -> tuple[CalibrationCommand, ...]:
     """Return the immutable command registry for tests/documentation."""
-
     return _COMMANDS
 
 
 def _version() -> str:
     try:
         return importlib.metadata.version("bividi")
-    except importlib.metadata.PackageNotFoundError:  # source-only invocation
+    except importlib.metadata.PackageNotFoundError:
         return "0.0.0+source"
 
 
@@ -170,27 +136,17 @@ def _looks_like_checkout(root: Path) -> bool:
 
 
 def find_source_root(explicit: str | Path | None = None) -> Path:
-    """Find the checkout containing legacy calibration compatibility scripts.
-
-    Installed package modules do not use this lookup. Explicit ``--source-root``
-    and ``BIVIDI_SOURCE_ROOT`` keep the remaining compatibility dispatches
-    deterministic while implementations migrate incrementally.
-    """
-
     candidates: list[Path] = []
     if explicit is not None:
         candidates.append(Path(explicit))
     env = os.environ.get("BIVIDI_SOURCE_ROOT")
     if env:
         candidates.append(Path(env))
-
     here = Path(__file__).resolve()
     if len(here.parents) >= 3:
         candidates.append(here.parents[2])
-
     cwd = Path.cwd().resolve()
     candidates.extend((cwd, *cwd.parents))
-
     seen: set[Path] = set()
     for candidate in candidates:
         try:
@@ -202,7 +158,6 @@ def find_source_root(explicit: str | Path | None = None) -> Path:
         seen.add(resolved)
         if _looks_like_checkout(resolved):
             return resolved
-
     raise RuntimeError(
         "cannot locate a Bividi source checkout containing tools/. "
         "Use --source-root PATH or set BIVIDI_SOURCE_ROOT."
@@ -218,24 +173,15 @@ def resolve_command(group: str, name: str) -> CalibrationCommand:
         raise KeyError(f"unknown {group} command: {name}") from exc
 
 
-def build_invocation(
-    group: str,
-    name: str,
-    tool_args: Sequence[str],
-    *,
-    source_root: str | Path | None = None,
-) -> list[str]:
+def build_invocation(group: str, name: str, tool_args: Sequence[str], *, source_root: str | Path | None = None) -> list[str]:
     command = resolve_command(group, name)
     if command.module is not None:
         return [sys.executable, "-m", command.module, *command.prefix, *tool_args]
-
     root = find_source_root(source_root)
     assert command.script is not None
     script = root / "tools" / command.script
     if not script.is_file():
-        raise RuntimeError(
-            f"calibration command {group} {name} expects missing tool: {script}"
-        )
+        raise RuntimeError(f"calibration command {group} {name} expects missing tool: {script}")
     return [sys.executable, str(script), *command.prefix, *tool_args]
 
 
@@ -297,7 +243,6 @@ def _parse_globals(argv: list[str]) -> tuple[Path | None, bool, list[str]]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
-
     if not raw or raw[0] in {"-h", "--help"}:
         _print_global_help()
         return 0
@@ -307,7 +252,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     if raw[0] == "--list":
         _print_command_list()
         return 0
-
     try:
         source_root, dry_run, rest = _parse_globals(raw)
         if not rest:
@@ -322,11 +266,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (KeyError, RuntimeError, ValueError) as exc:
         print(f"bividi-calib: error: {exc}", file=sys.stderr)
         return 2
-
     if dry_run:
         print(shlex.join(invocation))
         return 0
-
     completed = subprocess.run(invocation, check=False)
     return int(completed.returncode)
 
