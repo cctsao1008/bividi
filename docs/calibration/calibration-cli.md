@@ -31,6 +31,8 @@ The underlying evidence concepts remain separate: target/session construction, i
 
 Existing `tools/*.py` entry points remain compatibility surfaces during migration. Versioned artifacts remain readable independently of command naming.
 
+The frozen package-native command behavior is documented in `docs/calibration/command-contract.md` and represented by `bividi.calibration.contract`. That contract captures exit-code vocabulary, historical provenance identity, policy-source roles, and output authority boundaries without centralizing numerical calibration policy.
+
 ## Entry point
 
 Editable/source installation exposes:
@@ -177,4 +179,4 @@ The router and self-test manifest use only the Python standard library. Optional
 
 Six dependency-light stereo implementations (`stereo target-scale`, `stereo geometry-review`, `stereo repeatability`, `stereo promote`, `stereo report`, and `stereo campaign`) have moved under the installed package. The OpenCV stereo workbench commands remain intentionally heavier and still use the compatibility source-tree route.
 
-With package-native evidence review, repeatability, promotion, rendering, and orchestration now represented, the next #60 structural step is to freeze the common command behavior contract: exit-code vocabulary, stable historical tool/version provenance, policy-source semantics, and machine-readable versus human-readable output roles. That contract should be extracted only from behavior already demonstrated by the migrated leaves; it must not change artifact schemas, gate semantics, or optional-dependency boundaries. Heavier OpenCV/ROS-facing implementations should remain isolated from unrelated commands.
+The common behavior contract is now frozen from those six migrated leaves. The next #60 work should extend the same characterize-first migration approach to additional dependency-light IMU/camera-IMU leaves, or separately characterize the heavier OpenCV workbench before moving it. New migrations should conform to the frozen exit-code/provenance/policy/output roles where those roles apply; they must not change existing artifact schemas, evidence gates, or optional-dependency boundaries merely to force superficial uniformity.
