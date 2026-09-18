@@ -9,9 +9,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -98,6 +101,49 @@ bool wait_for(Predicate predicate, std::chrono::milliseconds timeout = std::chro
     }
     return predicate();
 }
+
+class ReorderDuplicateDropInterceptor final : public bividi::ReplayObservationInterceptor {
+public:
+    void reset() override {
+        held_.reset();
+        ++reset_calls;
+    }
+
+    void transform(
+        std::size_t source_position,
+        bividi::SensorObservation observation,
+        std::vector<bividi::SensorObservation>& output) override {
+        if (source_position == 0) {
+            held_ = std::move(observation);
+            return;
+        }
+        if (source_position == 1) {
+            output.push_back(observation);
+            output.push_back(observation);  // explicit duplicate
+            if (held_) {
+                output.push_back(std::move(*held_));  // delayed -> out-of-order
+                held_.reset();
+            }
+            return;
+        }
+        if (source_position == 2) {
+            return;  // explicit drop
+        }
+        output.push_back(std::move(observation));
+    }
+
+    void flush(std::vector<bividi::SensorObservation>& output) override {
+        if (held_) {
+            output.push_back(std::move(*held_));
+            held_.reset();
+        }
+    }
+
+    int reset_calls = 0;
+
+private:
+    std::optional<bividi::SensorObservation> held_;
+};
 
 void test_step_replay_preserves_observations() {
     TempSession temp("step");
@@ -202,6 +248,51 @@ void test_scaled_replay_uses_separate_schedule_clock() {
     assert(replay.next(observation));
     assert(observation.timing.host_receive.ticks == 1002000000ULL);
     assert(observation.timing.replay_schedule.ticks == 1000000ULL);
+}
+
+void test_replay_interception_seam_supports_drop_duplicate_and_reorder() {
+    TempSession temp("interceptor");
+    make_fixture(temp.path);
+
+    bividi::ReplayConfig config{};
+    config.session_dir = temp.path;
+    config.pacing = bividi::ReplayPacing::step;
+
+    auto interceptor = std::make_shared<ReorderDuplicateDropInterceptor>();
+    bividi::InterceptedReplaySource replay(
+        bividi::ReplaySource(config),
+        interceptor);
+
+    assert(interceptor->reset_calls == 1);
+    assert(replay.source_size() == 3);
+    assert(replay.source_position() == 0);
+    assert(!replay.eof());
+    assert(replay.capabilities().cameras.size() == 2);
+    assert(replay.metadata().serial == "SYN-001");
+
+    bividi::SensorObservation observation;
+    assert(replay.next(observation));
+    assert(observation.sequence == 11);  // source 0 was held
+    assert(replay.source_position() == 2);
+
+    assert(replay.next(observation));
+    assert(observation.sequence == 11);  // duplicate emission
+
+    assert(replay.next(observation));
+    assert(observation.sequence == 10);  // delayed source 0 -> out-of-order
+
+    // Source position 2 is deliberately dropped. The stage consumes the source,
+    // flushes, and then reports EOF with no silent source repair.
+    assert(!replay.next(observation));
+    assert(replay.source_position() == 3);
+    assert(replay.eof());
+
+    replay.reset();
+    assert(interceptor->reset_calls == 2);
+    assert(replay.source_position() == 0);
+    assert(!replay.eof());
+    assert(replay.next(observation));
+    assert(observation.sequence == 11);
 }
 
 void test_replay_capture_session_preview_and_controls() {
@@ -314,6 +405,7 @@ void test_cross_csv_identity_mismatch_is_rejected() {
 int main() {
     test_step_replay_preserves_observations();
     test_scaled_replay_uses_separate_schedule_clock();
+    test_replay_interception_seam_supports_drop_duplicate_and_reorder();
     test_replay_capture_session_preview_and_controls();
     test_cross_csv_identity_mismatch_is_rejected();
     std::cout << "bividi replay test: PASS\n";
