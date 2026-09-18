@@ -1,8 +1,8 @@
 # Consolidated calibration CLI
 
-Status: first Issue #60 routing layer.
+Status: Issue #60 consolidation in progress.
 
-`bividi-calib` is the discoverable operator entry point for the existing stereo, IMU, and camera-to-IMU evidence tools. This first slice deliberately delegates to the current `tools/*.py` implementations instead of copying calibration math into a second code path.
+`bividi-calib` is the discoverable operator entry point for the existing stereo, IMU, and camera-to-IMU evidence tools. The current routing layer deliberately delegates to the existing `tools/*.py` implementations instead of copying calibration math into a second code path.
 
 ```text
 bividi-calib
@@ -134,12 +134,26 @@ The delegated process exit code is preserved.
 | `camera-imu promote` | `tools/camera_imu_calibration_provenance.py` |
 | `camera-imu campaign` | `tools/plan_camera_imu_physical_campaign.py` |
 
+## Central self-test manifest
+
+Calibration command regression is registered once in `bividi.calib_selftests` rather than duplicated as a long list of GitHub Actions steps. The manifest still invokes every focused leaf self-test; consolidation changes orchestration, not the tests themselves.
+
+```bash
+python -m bividi.calib_selftests --list
+python -m bividi.calib_selftests
+python -m bividi.calib_selftests --only stereo-workbench --only imu-allan
+```
+
+The runner validates that every registered source tool exists, preserves each leaf process exit code as failure evidence, runs from the repository root, reports all failures by default, and supports `--fail-fast` for local diagnosis. Ubuntu and Windows execute the same manifest in CI. The OpenCV synthetic stereo solver remains in the OpenCV job because it intentionally exercises a heavier optional dependency surface.
+
+Characterization/qualification self-tests for #35 remain separate from this calibration manifest; they are not calibration commands and should not be pulled into #60 merely to shorten YAML.
+
 ## Dependency and evidence boundaries
 
-The router itself uses only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
+The router and self-test manifest use only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
 
 `synthetic`, `measured`, and `imported` provenance, named policy sources, SHA-256 evidence binding, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. The router does not rewrite their outputs or normalize their thresholds.
 
 ## Current limitations / next #60 slices
 
-This first slice still dispatches into source-tree scripts. The remaining consolidation work is to migrate reusable implementation modules under the installed package without forking their logic, centralize command/self-test contracts, and reduce the long per-tool GitHub Actions YAML list. Direct legacy scripts should remain thin compatibility wrappers during that migration.
+The consolidated command surface still dispatches into source-tree scripts. The remaining structural work is to migrate reusable implementation modules under the installed package without forking their logic, then leave direct legacy scripts as thin compatibility wrappers. Common machine-readable output/version conventions can be tightened as those modules move, without changing existing artifact schemas or evidence gates.
