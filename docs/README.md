@@ -33,6 +33,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 
 - [`calibration/calibration-cli.md`](calibration/calibration-cli.md) — consolidated `bividi-calib` stereo/IMU/camera↔IMU command surface and legacy-tool migration map
 - [`calibration/stereo-calibration-readiness.md`](calibration/stereo-calibration-readiness.md) — #8 ChArUco/AprilGrid target contracts, paired-session curation, corner/image-plane quality, native OpenCV mono/stereo solve, rectification metrics, physical baseline review, repeatability, and final evidence promotion
+- [`calibration/stereo-camera-model-comparison.md`](calibration/stereo-camera-model-comparison.md) — #61 same-session opencv5/rational/fisheye fit, edge, epipolar, usable-map evidence, and explicit model-selection policy boundary
 - [`calibration/inertial-camera-imu.md`](calibration/inertial-camera-imu.md) — #47 IMU and camera↔IMU artifact semantics, SI units, frame/time-offset conventions, validation, and Kalibr adapter mapping
 - [`calibration/camera-imu-timestamp-audit.md`](calibration/camera-imu-timestamp-audit.md) — lossless Nori IMU timestamp/raw-count recording plus device-domain exposure↔IMU cadence, rollover, and nearest-sample audit
 - [`calibration/imu-stationary-analysis.md`](calibration/imu-stationary-analysis.md) — stationary raw-count bias/variance evidence with optional explicitly-provenanced SI scale conversion
