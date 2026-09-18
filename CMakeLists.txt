@@ -329,6 +329,33 @@ if(BIVIDI_BUILD_TESTS)
                     bividi_depth_replay_integration_tests
                     PROPERTIES DEPENDS bividi_synthetic_rig_fixture_generate
                 )
+
+                add_executable(
+                    bividi_web_depth_runtime_tests
+                    tests/native/test_web_depth_runtime.cpp
+                )
+                target_include_directories(
+                    bividi_web_depth_runtime_tests
+                    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/apps
+                )
+                target_link_libraries(
+                    bividi_web_depth_runtime_tests
+                    PRIVATE bividi_replay bividi_depth
+                )
+                target_compile_definitions(
+                    bividi_web_depth_runtime_tests
+                    PRIVATE BIVIDI_HAVE_DEPTH=1
+                )
+                add_test(
+                    NAME bividi_web_depth_runtime_tests
+                    COMMAND bividi_web_depth_runtime_tests
+                        ${_bividi_synthetic_rig_fixture}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/calibration/examples/stereo-synthetic-depth-v1.json
+                )
+                set_tests_properties(
+                    bividi_web_depth_runtime_tests
+                    PROPERTIES DEPENDS bividi_synthetic_rig_fixture_generate
+                )
             endif()
         endif()
     endif()
