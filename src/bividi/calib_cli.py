@@ -66,7 +66,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         module="bividi.calibration.stereo_repeatability",
     ),
     CalibrationCommand("stereo", "promote", "stereo_calibration_provenance.py", (), "run stereo evidence/promotion gate"),
-    CalibrationCommand("stereo", "report", "render_stereo_calibration_report.py", (), "render a human stereo calibration report"),
+    CalibrationCommand(
+        "stereo",
+        "report",
+        None,
+        summary="render a human stereo calibration report",
+        module="bividi.calibration.stereo_report",
+    ),
     CalibrationCommand("stereo", "campaign", "plan_stereo_calibration_campaign.py", (), "plan/audit a physical stereo campaign"),
 
     # IMU / #47
