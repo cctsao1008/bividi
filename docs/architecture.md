@@ -1,6 +1,6 @@
 # Bividi Architecture
 
-Status: **platform-independent sensor core — Issues #35 and #38**
+Status: **platform-independent sensor core — Issues #35, #38, and #11**
 
 Bividi turns host-visible sensor data into normalized observation streams while keeping operating-system mechanics, device-family quirks, and downstream interpretation outside the core.
 
@@ -11,6 +11,7 @@ platform != device
 device transport != sensor topology
 sensor topology != build configuration
 transport payload != host observation
+raw observation != derived product
 observation != meaning
 ```
 
@@ -28,9 +29,10 @@ Device Adapter
 Capability Discovery
         ↓
 Bividi Core
-  platform-independent
+  SensorCapabilities
+  SensorObservation
         ↓
-Observation Streams
+Derived pipelines / consumers
         ↓
 LSMM · Robotics · CV / ML · Recorder
 ```
@@ -50,7 +52,7 @@ macOS     AVFoundation / UVC
 Replay    deterministic file-backed input
 ```
 
-A backend may discover devices and eventually own platform-specific capture handles, buffers, callbacks, and error translation.
+A backend may discover devices and own platform-specific capture handles, buffers, callbacks, and error translation.
 
 It must not define device-family semantics.
 
@@ -70,28 +72,29 @@ Typical responsibilities include:
 
 The adapter must not own operating-system policy.
 
+The first concrete native normalization adapter is the DECXIN `DecodedFrame -> SensorObservation` bridge. It preserves raw IMU counts/timestamp evidence and does not invent SI scaling before an explicit calibration exists.
+
 ## 5. Runtime capability discovery
 
 Sensor topology is a runtime fact.
 
-The compact core capability model can describe:
+The native `SensorCapabilities` contract describes:
 
 ```text
 camera streams[]
 stereo_pairs[]
-camera encoding
+image representation
 camera modality
 IMU present / absent
 audio present / absent
-device timestamp support
-exposure timestamp support
+host/device/exposure/IMU timing support
 hardware synchronization support
 trigger modes[]
 ```
 
-Camera encoding and physical modality are separate concepts. For example, an infrared camera may expose a monochrome image representation.
+Image representation and physical modality are separate concepts. For example, an infrared camera may expose a monochrome host representation.
 
-Stereo relationships are explicit. The presence of two camera streams alone does not authorize Bividi to infer that they form a calibrated or synchronized stereo pair.
+Stereo relationships are explicit. The presence of two camera streams alone does not authorize Bividi to infer a stereo pair. A declared stereo pair also does not by itself imply physical left/right ordering, calibration quality, or a measured synchronization bound.
 
 ## 6. Bividi Core
 
@@ -108,9 +111,13 @@ a fixed number of cameras
 a fixed RGB / IR assumption
 mandatory IMU or audio
 a particular camera model or lens SKU
+OpenCV ownership types
+ROS / MCAP schemas
 ```
 
 The core may depend only on normalized Bividi domain types and interfaces.
+
+`ImageView` remains non-owning. `FrameLease` carries backing-buffer lifetime independently of image geometry.
 
 ## 7. Build-time versus runtime
 
@@ -133,32 +140,57 @@ specific lens/SKU
 
 Those are runtime device/capability facts.
 
-## 8. Host/provider compatibility boundary
+## 8. Native observation boundary
 
-The current Python host facade predates this capability split and still exposes a stereo-oriented provider/mode API.
+Issue #11 defines the native consumer contract in:
 
-That compatibility surface remains usable while Issue #11 owns the final consumer observation-boundary freeze.
+```text
+include/bividi/capabilities.hpp
+include/bividi/observation.hpp
+docs/observation-interface.md
+```
 
-New code must not infer runtime topology from provider names or build flags. Providers expose normalized `SensorCapabilities` explicitly.
+`SensorObservation` carries source/evidence state, sequence/continuity state, explicit clock domains, calibration/configuration identity, camera observations, and IMU observations.
+
+Raw camera/IMU observations stay distinct from downstream disparity/depth/XYZ/VIO products. Engineering preview structs used by viewer/web are intentionally smaller and do not define the stable observation ABI.
+
+The legacy Python host/capability facade remains useful for control, experiments, and reference behavior, but the native C++ contract is authoritative for production runtime observation semantics.
 
 ## 9. Timing and synchronization
 
-Device timing and host timing are different domains.
+Device timing, host timing, and replay scheduling are different domains.
 
-Where available, Bividi preserves distinctions equivalent to:
+Bividi preserves distinctions equivalent to:
 
 ```text
-device timestamp
-exposure start
-exposure end
-host receive / callback time
-sequence continuity
-synchronization status
+host receive monotonic time
+device/exposure time
+IMU sample time
+replay scheduling time
+sequence continuity / epoch
 ```
 
-Host arrival time must not silently replace a device/exposure timestamp when the latter exists.
+There is deliberately no single generic `timestamp` field in the native contract.
 
-## 10. Scope
+Host arrival time must not silently replace a device/exposure timestamp when the latter exists. Replay scheduling time must not overwrite original producer timestamps. Finite-width raw timestamp evidence may be retained alongside extended device time for rollover/audit work.
+
+## 10. Calibration and derived pipelines
+
+Calibration identities are opaque references carried by observations. The corresponding versioned #8/#47 artifacts remain separate.
+
+Derived products such as:
+
+```text
+disparity
+metric depth
+XYZ / point cloud
+VIO pose / velocity
+future SLAM outputs
+```
+
+are separate typed results. They may reference the source observation and calibration/configuration identity, but they are not captured sensor evidence.
+
+## 11. Scope
 
 Bividi owns:
 
@@ -166,8 +198,8 @@ Bividi owns:
 - device normalization;
 - runtime capability discovery;
 - timing/synchronization semantics;
-- calibration identity;
-- capture status and quality;
+- calibration/configuration identity;
+- capture validity/continuity state;
 - normalized observation delivery.
 
 Bividi does not own:
@@ -179,7 +211,7 @@ Bividi does not own:
 - LSMM reasoning;
 - a generic multimodal framework.
 
-## 11. Device-specific documentation
+## 12. Device-specific documentation
 
 Device-family and SKU facts belong under focused documentation such as:
 
@@ -191,4 +223,4 @@ docs/characterization/
 
 Vendor claims, documented protocol behavior, and measured specimen behavior must remain distinguishable.
 
-The README and this architecture document should not track changing implementation progress or current-device development status.
+The README and this architecture document describe durable boundaries rather than tracking every changing implementation milestone.
