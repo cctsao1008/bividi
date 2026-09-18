@@ -5,6 +5,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 ## Architecture
 
 - [`architecture.md`](architecture.md) — durable system boundary and dependency direction
+- [`observation-interface.md`](observation-interface.md) — native `SensorCapabilities` / `SensorObservation` contract, timing domains, ownership, continuity, and compatibility rules
 - [`host.md`](host.md) — hardware-independent host API and backend/adapter boundary
 - [`native-runtime.md`](native-runtime.md) — C++/OpenCV production runtime and Python reference/oracle role
 - [`viewer.md`](viewer.md) — minimal OpenCV diagnostic viewer and local control surface
