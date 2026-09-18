@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bividi/observation_source.hpp"
 #include "bividi/replay.hpp"
 #include "bividi/session.hpp"
 
@@ -10,8 +11,9 @@
 namespace bividi {
 
 // Engineering/UI adapter over the native ReplaySource. ReplaySource remains the
-// authoritative SensorObservation producer; this class only supplies the
-// legacy viewer/web lifecycle and preview surface.
+// authoritative SensorObservation producer. CaptureSession continues to expose
+// only lifecycle/preview state; ObservationSnapshotSource is an explicit,
+// separate opt-in tap for downstream engineering consumers such as #9 depth.
 struct ReplaySessionConfig {
     std::filesystem::path session_dir;
     double rate = 1.0;
@@ -20,7 +22,7 @@ struct ReplaySessionConfig {
     EvidenceKind evidence_override = EvidenceKind::unknown;
 };
 
-class ReplayCaptureSession final : public CaptureSession {
+class ReplayCaptureSession final : public CaptureSession, public ObservationSnapshotSource {
 public:
     explicit ReplayCaptureSession(ReplaySessionConfig config);
     ~ReplayCaptureSession() override;
@@ -30,6 +32,9 @@ public:
 
     [[nodiscard]] SessionStatus snapshot() const override;
     [[nodiscard]] bool latest_stereo_preview(StereoPreviewFrame& out) const override;
+
+    [[nodiscard]] const SensorCapabilities& observation_capabilities() const noexcept override;
+    [[nodiscard]] bool latest_observation(SensorObservation& out) const override;
 
     bool toggle_capture() override;
     bool cycle_trigger() override;
