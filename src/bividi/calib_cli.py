@@ -197,7 +197,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="review device-time offset evidence",
         module="bividi.calibration.camera_imu_temporal_review_command",
     ),
-    CalibrationCommand("camera-imu", "repeatability", "compare_camera_imu_calibrations.py", (), "compare repeated camera/IMU solves"),
+    CalibrationCommand(
+        "camera-imu",
+        "repeatability",
+        None,
+        summary="compare repeated camera/IMU solves",
+        module="bividi.calibration.camera_imu_repeatability_command",
+    ),
     CalibrationCommand("camera-imu", "promote", "camera_imu_calibration_provenance.py", (), "run camera/IMU evidence promotion gate"),
     CalibrationCommand("camera-imu", "campaign", "plan_camera_imu_physical_campaign.py", (), "plan/audit a physical camera/IMU campaign"),
 )
