@@ -1,6 +1,6 @@
 # Calibration command behavior contract
 
-Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issue #89.
+Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issues #89 and #91.
 
 This document defines the command-level behavior that `bividi-calib` must preserve while implementations move between compatibility scripts and installed package modules. It does **not** define calibration math, artifact schemas, or product/lab thresholds.
 
@@ -14,7 +14,7 @@ This document defines the command-level behavior that `bividi-calib` must preser
 
 `3` is therefore not a parser/runtime error. It means the evaluation itself completed and found failing evidence. Presentation/orchestration/analysis commands that do not own a quality disposition do not manufacture an exit-3 state.
 
-The package-native `imu timing-audit` and `imu stationary` commands are analysis leaves. They return `0` for a completed analysis and `2` for usage/input/domain failures; they do not currently own a PASS/FAIL evidence disposition and therefore do not use exit `3`.
+The package-native `imu timing-audit`, `imu stationary`, and `imu allan` commands are analysis leaves. They return `0` for a completed analysis and `2` for usage/input/domain failures; they do not currently own a PASS/FAIL evidence disposition and therefore do not use exit `3`.
 
 ## Provenance identity
 
@@ -32,7 +32,7 @@ Current frozen identities:
 
 `stereo report` is presentation-only Markdown and does not create a new versioned evidence artifact merely to attach provenance.
 
-The existing `bividi.calibration.camera_imu_timing_audit.v1` and `bividi.calibration.imu_stationary_analysis.v1` reports predate package migration and do not carry a top-level versioned `provenance` object. Issue #89 preserves those schemas rather than injecting new fields merely to make the metadata table uniform. The stationary report's `scale_conversion.source` remains the required provenance label for an operator-supplied SI conversion scale.
+The existing `bividi.calibration.camera_imu_timing_audit.v1`, `bividi.calibration.imu_stationary_analysis.v1`, and `bividi.calibration.imu_allan_analysis.v1` reports predate package migration and do not carry a top-level versioned `provenance` object. Package migration preserves those schemas rather than injecting new fields merely to make metadata uniform. The stationary and Allan reports keep explicit conversion provenance under `scale_conversion.source` when operator-supplied SI scales are used.
 
 ## Policy-source semantics
 
@@ -46,11 +46,14 @@ For package-native stereo evidence producers/reviewers:
 - `report` only renders existing status/policy information. It cannot promote, downgrade, or invent evidence.
 - `campaign` may record a policy source as orchestration metadata, but its presence/schema audit does not perform quality/hash/policy verification.
 
-For the package-native IMU foundation leaves:
+For package-native IMU analysis leaves:
 
 - `imu timing-audit --gap-threshold-us` is an explicit analysis parameter used only to count long intervals. It is **not** an acceptance gate and does not create PASS/FAIL evidence.
 - `imu stationary` never infers sensor full-scale from the vendor demo. Supplying `--accel-g-per-count` and/or `--gyro-dps-per-count` requires an explicit `--scale-source`; that source identifies the conversion assumption/evidence and is not a product acceptance policy.
-- Neither command invents a 600 Hz requirement, a synchronization threshold, or a calibrated camera↔IMU offset.
+- `imu allan` derives its analysis rate from device timestamps unless `--sample-rate-hz` is explicitly supplied. It never silently assumes 600 Hz.
+- `imu allan` never chooses Allan fit windows automatically. White-noise and random-walk fits exist only when `--white-window` / `--random-walk-window` are explicitly supplied.
+- `imu allan` never reduces per-axis SI fits into Kalibr scalar candidates unless `--kalibr-axis-policy` is explicit, and that option additionally requires explicit SI conversion scales plus both fit windows.
+- Allan/Kalibr fit outputs remain candidate analysis evidence; they are not automatically promoted into a Bividi calibration artifact.
 
 ## Output roles
 
@@ -66,6 +69,7 @@ The consolidated CLI intentionally does not force all leaves into one output sha
 | `stereo campaign` | orchestration JSON + Markdown runbook; audit JSON | Workflow/dependency/presence metadata, not quality proof. |
 | `imu timing-audit` | Markdown stdout + optional machine JSON / Markdown files | Timing/continuity evidence in the DECXIN device-time domain; nearest-sample deltas are not a calibrated temporal offset. |
 | `imu stationary` | Markdown stdout + optional machine JSON / Markdown files | Raw-count statistics plus optional explicitly sourced SI conversion; accelerometer stationary mean includes gravity. |
+| `imu allan` | Markdown stdout + optional Allan curve CSV / machine JSON / Markdown files | Streaming Allan/noise analysis. Raw-count curves are always available; SI fits and Kalibr candidates require explicit operator inputs and remain analysis evidence. |
 
 Machine-readable evidence and gate artifacts remain authoritative where a gate exists. Human-readable output is a view over the analysis/evidence, and orchestration output describes what should exist rather than proving that the evidence is acceptable.
 
@@ -79,10 +83,12 @@ bividi-calib
 
 legacy tools/*.py
     -> thin compatibility wrapper
-    -> same installed module
+    -> same installed implementation
 ```
 
-Both surfaces must preserve the same artifact schema, evidence/interpretation semantics, provenance identity where applicable, and command-level exit-code behavior.
+Both surfaces must preserve the same artifact/report schema, evidence/interpretation semantics, provenance identity where applicable, and command-level exit-code behavior.
+
+For `imu allan`, the characterized estimator/report implementation is `bividi.calibration.imu_allan`; `bividi.calibration.imu_allan_command` is a thin package command adapter that only normalizes the historical domain-error exit `3` to the frozen command-contract exit `2`. It does not alter Allan math, fit semantics, or report content.
 
 ## Frozen package-native set
 
@@ -99,5 +105,9 @@ IMU foundation:
 
 - `imu timing-audit`
 - `imu stationary`
+
+IMU noise laboratory:
+
+- `imu allan`
 
 Heavier OpenCV workbench commands and the remaining IMU/camera↔IMU leaves can adopt this contract incrementally after their existing behavior is characterized. They should not be normalized by changing measurement or evidence semantics merely to make the table look uniform.
