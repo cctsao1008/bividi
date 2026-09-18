@@ -10,7 +10,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`native-runtime.md`](native-runtime.md) — C++/OpenCV production runtime and Python reference/oracle role
 - [`viewer.md`](viewer.md) — minimal OpenCV diagnostic viewer and local control surface
 - [`web-ui.md`](web-ui.md) — lightweight browser engineering console, HTTP/MJPEG boundary, and security posture
-- [`recording.md`](recording.md) — recording/replay contract, MCAP preference, and container-independence rule
+- [`recording.md`](recording.md) — native `SensorObservation` replay, viewer/web replay adapters, MCAP direction, and container-independence rule
 
 ## Active reference device
 
