@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace bividi {
 
@@ -15,6 +16,32 @@ enum class ReplayPacing {
     as_fast_as_possible,
     real_time,
     scaled,
+};
+
+// Optional replay-stage interception seam used by deterministic test tooling.
+// ReplaySource materializes and conformance-checks the source observation first;
+// an interceptor stage may then emit zero, one, or many observations and may
+// buffer observations until a later input or flush(). This is what lets #59
+// implement drop/duplicate/reorder/timing/pairing faults without adding fault
+// branches to production device decoding.
+//
+// Interceptor output is deliberately NOT revalidated by the stage: a fault
+// recipe may intentionally produce degraded or structurally invalid evidence.
+// Consumers/tests remain responsible for asserting the expected disposition.
+class ReplayObservationInterceptor {
+public:
+    virtual ~ReplayObservationInterceptor() = default;
+
+    virtual void reset() {}
+
+    virtual void transform(
+        std::size_t source_position,
+        SensorObservation observation,
+        std::vector<SensorObservation>& output) = 0;
+
+    virtual void flush(std::vector<SensorObservation>& output) {
+        (void)output;
+    }
 };
 
 struct ReplayConfig {
@@ -76,6 +103,39 @@ public:
 
     // Rewind to the first recorded observation. Original timestamps/sequence
     // are unchanged; a new replay scheduling epoch begins on the next call.
+    void reset();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+// Decorator above ReplaySource that provides the explicit #59 fault-injection
+// interception point. Normal replay does not pass through this class, so fault
+// support adds no branches to the production decoder/import path.
+class InterceptedReplaySource {
+public:
+    InterceptedReplaySource(
+        ReplaySource source,
+        std::shared_ptr<ReplayObservationInterceptor> interceptor);
+    ~InterceptedReplaySource();
+
+    InterceptedReplaySource(InterceptedReplaySource&&) noexcept;
+    InterceptedReplaySource& operator=(InterceptedReplaySource&&) noexcept;
+
+    InterceptedReplaySource(const InterceptedReplaySource&) = delete;
+    InterceptedReplaySource& operator=(const InterceptedReplaySource&) = delete;
+
+    [[nodiscard]] const SensorCapabilities& capabilities() const noexcept;
+    [[nodiscard]] const ReplayMetadata& metadata() const noexcept;
+
+    // Source timeline size/position remain explicit even if the interceptor
+    // drops or duplicates emitted observations.
+    [[nodiscard]] std::size_t source_size() const noexcept;
+    [[nodiscard]] std::size_t source_position() const noexcept;
+    [[nodiscard]] bool eof() const noexcept;
+
+    bool next(SensorObservation& out);
     void reset();
 
 private:

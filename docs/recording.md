@@ -1,6 +1,6 @@
 # Bividi Recording and Replay Contract
 
-Status: native `SensorObservation` replay implemented; MCAP storage adapter remains follow-up work in Issue #31.
+Status: native `SensorObservation` replay implemented; explicit replay interception seam implemented; MCAP storage adapter remains follow-up work in Issue #31.
 
 ## Purpose
 
@@ -14,6 +14,8 @@ For ROS interoperability, the preferred modern path is ROS2 `rosbag2` with MCAP 
 SensorObservation + SensorCapabilities
         |
         +--> native Bividi session replay adapter
+        |
+        +--> explicit replay interception decorator (#59)
         |
         +--> MCAP native/storage adapter          [follow-up]
         |
@@ -50,6 +52,36 @@ scaled replay
 Original producer timing is preserved. Real-time/scaled playback adds a separate replay scheduling clock and never overwrites the recorded host/device timestamps.
 
 The importer reconstructs the union of camera-frame and IMU frame indices. Therefore a recorder `frame_stride` that intentionally omits some image pairs does not silently delete the corresponding IMU-bearing observations.
+
+## Explicit replay interception seam
+
+Issue #59 needs deterministic fault injection without teaching the production DECXIN/Nori decoder about test-only corruption modes. The interception point is therefore an explicit decorator **above** normal `ReplaySource`:
+
+```text
+recorded session
+    ↓
+ReplaySource
+    ↓
+materialized + source-conformance-checked SensorObservation
+    ↓
+InterceptedReplaySource                 [only when explicitly constructed]
+    ↓
+ReplayObservationInterceptor
+    ↓
+zero / one / many emitted observations
+    ↓
+consumer / regression assertion
+```
+
+Normal replay does not pass through this decorator, so production replay behavior is unchanged when no fault test is requested.
+
+`ReplayObservationInterceptor` can buffer an input and later emit it, emit multiple copies, emit nothing, or mutate the observation. This is sufficient as a transport-independent seam for later #59 recipes such as drop, duplicate, reorder, timestamp mutation, missing camera, IMU mutation, and explicit continuity changes.
+
+The pre-interceptor observation has already passed the normal replay source conformance check. **Post-interceptor observations are deliberately not automatically repaired or revalidated by the interception stage.** A fault recipe may intentionally create degraded or structurally invalid evidence; the consuming regression test must assert the layer-specific expected disposition, for example rejection, degraded validity, a new continuity epoch, a derived-pipeline reset, or an explicit gap.
+
+`source_size()` and `source_position()` refer to the original source timeline even when an interceptor changes the number or order of emitted observations. `reset()` rewinds the original replay source, clears buffered emitted observations, and resets interceptor state so a recipe remains deterministic.
+
+The interception seam itself does not define a recipe format, seed policy, or fault taxonomy. Those are owned by #59. It also does not replace physical disconnect/reconnect, USB, hub, power, SDK recovery, or synchronization testing in #35.
 
 ## Engineering viewer / web replay
 
@@ -185,9 +217,15 @@ recorded mono stereo + raw IMU
   → SensorObservation
   → pause / reset / scaled timing
   → engineering BGR preview copy
+
+recorded session
+  → ReplaySource
+  → InterceptedReplaySource
+  → hold / duplicate / delayed emission / drop
+  → deterministic source-position and reset assertions
 ```
 
-The fixture intentionally includes an IMU-only timeline observation between image-bearing observations to ensure `frame_stride` does not collapse source chronology.
+The first fixture intentionally includes an IMU-only timeline observation between image-bearing observations to ensure `frame_stride` does not collapse source chronology. The interception fixture proves the seam can change output cardinality/order while the original source timeline and reset behavior remain explicit.
 
 Physical AR0234 validation remains owned by #35, #8, and #47 evidence campaigns.
 
@@ -195,6 +233,8 @@ Physical AR0234 validation remains owned by #35, #8, and #47 evidence campaigns.
 
 - MCAP is not the Bividi core API.
 - `CaptureSession` preview state is not the Bividi normalized data API.
+- Fault recipes are not part of the production decoder.
+- Synthetic/replay fault injection is not physical disconnect/reconnect validation.
 - ROS2 messages are not the Bividi core API.
 - ROS1 `.bag` is not the preferred Bividi recording format.
 - Replay scheduling time is not original sensor time.
