@@ -12,16 +12,16 @@
       <div>
         <p class="eyebrow">Bividi</p>
         <h1>Engineering Console</h1>
-        <p class="subtitle">Stereo preview, timing, IMU state, and device controls.</p>
+        <p class="subtitle">Stereo preview, timing, IMU state, device controls, and optional calibrated derived geometry.</p>
       </div>
       <div class="status-pill"><span id="state-dot"></span><span id="state">connecting</span></div>
     </header>
 
-    <section class="notice">Synthetic source only. Preview quality and timing shown here are not AR0234 measurements.</section>
+    <section id="evidence-notice" class="notice">Connecting to the selected engineering source.</section>
 
     <section class="stereo-grid">
-      <figure><figcaption>Camera A</figcaption><img src="/stream/a.mjpg" alt="Camera A synthetic preview"></figure>
-      <figure><figcaption>Camera B</figcaption><img src="/stream/b.mjpg" alt="Camera B synthetic preview"></figure>
+      <figure><figcaption>Camera A</figcaption><img src="/stream/a.mjpg" alt="Camera A engineering preview"></figure>
+      <figure><figcaption>Camera B</figcaption><img src="/stream/b.mjpg" alt="Camera B engineering preview"></figure>
     </section>
 
     <section class="metrics">
@@ -31,6 +31,29 @@
       <article><span>IMU</span><strong id="imu">—</strong></article>
       <article><span>Exposure start</span><strong id="es">—</strong></article>
       <article><span>Exposure end</span><strong id="ee">—</strong></article>
+    </section>
+
+    <section id="depth-panel" class="derived-panel hidden">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Derived geometry</p>
+          <h2>Calibrated stereo depth</h2>
+        </div>
+        <strong id="depth-disposition">—</strong>
+      </div>
+      <p class="derived-note">These are visualization products derived from the selected calibration artifact and normalized source observation. They do not replace float disparity/depth data or establish physical AR0234 accuracy by themselves.</p>
+      <div class="stereo-grid">
+        <figure><figcaption>Disparity preview</figcaption><img id="disparity-image" alt="Derived disparity preview"></figure>
+        <figure><figcaption>Metric depth preview</figcaption><img id="depth-image" alt="Derived metric depth preview"></figure>
+      </div>
+      <section class="derived-metrics">
+        <article><span>Calibration</span><strong id="depth-calibration">—</strong></article>
+        <article><span>Source sequence</span><strong id="depth-sequence">—</strong></article>
+        <article><span>Synchronization</span><strong id="depth-sync">—</strong></article>
+        <article><span>Valid pixels</span><strong id="depth-valid">—</strong></article>
+        <article><span>Reset generation</span><strong id="depth-reset">—</strong></article>
+        <article><span>Reason</span><strong id="depth-reason">—</strong></article>
+      </section>
     </section>
 
     <section class="controls">
