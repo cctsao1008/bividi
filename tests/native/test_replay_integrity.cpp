@@ -161,6 +161,42 @@ void test_session_escape_media_path_is_rejected() {
     assert(constructor_rejected(temp.path));
 }
 
+void test_raw_32bit_rollover_evidence_remains_distinct_from_extended_device_time() {
+    TempSession temp("rollover");
+    make_fixture(temp.path);
+
+    // 2^32 us rollover occurs between ES and EE. Extended timestamps remain
+    // monotonic while the preserved 32-bit raw representation wraps to 24 us.
+    write_text(
+        temp.path / "frames.csv",
+        "frame_index,frame_sequence,host_receive_monotonic_ns,sdk_timestamp_encoding,sdk_seconds,sdk_microseconds,sdk_filetime_100ns,exposure_start_raw_us,exposure_end_raw_us,exposure_start_extended_us,exposure_end_extended_us,camera_a_path,camera_b_path\n"
+        "0,10,1000000000,unknown,0,0,0,4294967280,24,4294967280,4294967320,camera_a/0000000000.png,camera_b/0000000000.png\n");
+    write_text(
+        temp.path / "imu.csv",
+        "frame_index,frame_sequence,host_receive_monotonic_ns,exposure_start_raw_us,exposure_end_raw_us,exposure_start_extended_us,exposure_end_extended_us,sample_index,sample_valid,imu_raw_time_us,imu_extended_time_us,accel_raw_x,accel_raw_y,accel_raw_z,gyro_raw_x,gyro_raw_y,gyro_raw_z\n"
+        "0,10,1000000000,4294967280,24,4294967280,4294967320,0,true,8,4294967304,1,2,3,4,5,6\n");
+
+    bividi::ReplayConfig config{};
+    config.session_dir = temp.path;
+    config.pacing = bividi::ReplayPacing::step;
+    bividi::ReplaySource replay(config);
+
+    bividi::SensorObservation observation;
+    assert(replay.next(observation));
+    assert(observation.cameras.size() == 2);
+    const auto& timing = observation.cameras[0].exposure;
+    assert(timing.start.ticks == 4'294'967'280ULL);
+    assert(timing.end.ticks == 4'294'967'320ULL);
+    assert(timing.end.ticks > timing.start.ticks);
+    assert(timing.raw_start.raw_ticks == 4'294'967'280ULL);
+    assert(timing.raw_end.raw_ticks == 24ULL);
+    assert(timing.raw_end.raw_ticks < timing.raw_start.raw_ticks);
+
+    assert(observation.imu.size() == 1);
+    assert(observation.imu[0].sample_time.ticks == 4'294'967'304ULL);
+    assert(observation.imu[0].raw_time.raw_ticks == 8ULL);
+}
+
 }  // namespace
 
 int main() {
@@ -170,6 +206,7 @@ int main() {
     test_stereo_geometry_mismatch_is_rejected();
     test_mid_session_geometry_change_is_rejected_when_materialized();
     test_session_escape_media_path_is_rejected();
+    test_raw_32bit_rollover_evidence_remains_distinct_from_extended_device_time();
     std::cout << "bividi replay artifact integrity tests: PASS\n";
     return 0;
 }
