@@ -31,6 +31,7 @@ _SELF_TESTS: tuple[CalibrationSelfTest, ...] = (
     CalibrationSelfTest("example-imu-v1", "validate_calibration_artifact.py", ("calibration/examples/imu-synthetic-v1.json",), "validate synthetic IMU example"),
     CalibrationSelfTest("example-camera-imu-v1", "validate_calibration_artifact.py", ("calibration/examples/camera-imu-synthetic-v1.json",), "validate synthetic camera/IMU example"),
     CalibrationSelfTest("stereo-workbench", "stereo_calibration_workbench.py", ("--self-test",), "stereo workbench dependency-light contract"),
+    CalibrationSelfTest("stereo-model-comparison", "compare_stereo_camera_models.py", ("--self-test",), "stereo camera-model comparison contract"),
     CalibrationSelfTest("stereo-target-scale", "review_calibration_target_scale.py", ("--self-test",), "printed-target scale review"),
     CalibrationSelfTest("stereo-geometry", "review_stereo_geometry.py", ("--self-test",), "stereo geometry review"),
     CalibrationSelfTest("stereo-repeatability", "compare_stereo_calibrations.py", ("--self-test",), "stereo repeatability"),
@@ -99,7 +100,6 @@ def select_tests(names: Sequence[str] | None) -> tuple[CalibrationSelfTest, ...]
     unknown = [name for name in requested if name not in known]
     if unknown:
         raise KeyError("unknown calibration self-test(s): " + ", ".join(unknown))
-    # Keep manifest order even when --only arguments arrive in another order.
     wanted = set(requested)
     return tuple(case for case in _SELF_TESTS if case.name in wanted)
 
