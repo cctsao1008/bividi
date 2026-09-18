@@ -28,6 +28,7 @@ PolicyRole = Literal[
     "recorded-orchestration-metadata",
     "analysis-parameter-no-acceptance-gate",
     "explicit-scale-source-no-acceptance-gate",
+    "explicit-analysis-parameters-no-acceptance-gate",
 ]
 
 
@@ -118,6 +119,8 @@ STEREO_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+# Issue #89 foundation leaves. Kept as a focused tuple because tests and docs
+# treat timing/stationary as the coupled base that later IMU laboratories build on.
 IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="imu",
@@ -144,8 +147,24 @@ IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+# Package-native noise-characterization laboratories layered on that foundation.
+IMU_NOISE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="imu",
+        name="allan",
+        module="bividi.calibration.imu_allan_command",
+        compatibility_tool="analyze_imu_allan.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="explicit-analysis-parameters-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    STEREO_COMMAND_CONTRACTS + IMU_COMMAND_CONTRACTS
+    STEREO_COMMAND_CONTRACTS + IMU_COMMAND_CONTRACTS + IMU_NOISE_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}

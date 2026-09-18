@@ -117,16 +117,16 @@ class CalibrationCliTests(unittest.TestCase):
             root = Path(tmp)
             (root / "tools").mkdir()
             (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
-            script = root / "tools" / "analyze_imu_allan.py"
+            script = root / "tools" / "analyze_imu_six_position.py"
             script.write_text("raise RuntimeError('must not execute')\n", encoding="utf-8")
 
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 rc = calib_cli.main(
-                    ["--source-root", str(root), "--dry-run", "imu", "allan", "trace.csv"]
+                    ["--source-root", str(root), "--dry-run", "imu", "six-position", "trace.csv"]
                 )
             self.assertEqual(rc, 0)
-            self.assertIn("analyze_imu_allan.py", stdout.getvalue())
+            self.assertIn("analyze_imu_six_position.py", stdout.getvalue())
             self.assertIn("trace.csv", stdout.getvalue())
 
     def test_migrated_module_dry_runs_are_source_tree_independent(self):
