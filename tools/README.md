@@ -2,6 +2,16 @@
 
 Host-side probes, capture utilities, calibration helpers, visualization, and characterization scripts belong here.
 
+For calibration workflows, prefer the consolidated operator entry point:
+
+```text
+bividi-calib stereo ...
+bividi-calib imu ...
+bividi-calib camera-imu ...
+```
+
+The current `tools/*.py` calibration scripts remain compatibility implementation entry points during Issue #60 migration; `bividi-calib` delegates to them rather than duplicating calibration math. See `docs/calibration/calibration-cli.md` for the command/migration map.
+
 Tools may depend on platform-specific backends. Core observation semantics must not.
 
 A tool is not authoritative evidence by itself; its output must identify enough context to reproduce the measurement it reports.

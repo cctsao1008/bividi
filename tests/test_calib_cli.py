@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import contextlib
+import io
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+from bividi import calib_cli
+
+
+class CalibrationCliTests(unittest.TestCase):
+    def test_registry_has_unique_group_command_pairs(self):
+        pairs = [(item.group, item.name) for item in calib_cli.commands()]
+        self.assertEqual(len(pairs), len(set(pairs)))
+        self.assertIn(("stereo", "solve"), pairs)
+        self.assertIn(("imu", "allan"), pairs)
+        self.assertIn(("camera-imu", "import-kalibr"), pairs)
+
+    def test_find_source_root_accepts_explicit_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tools").mkdir()
+            (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
+            self.assertEqual(calib_cli.find_source_root(root), root.resolve())
+
+    def test_build_invocation_preserves_tool_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tools").mkdir()
+            (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
+            script = root / "tools" / "stereo_calibration_workbench.py"
+            script.write_text("print('fixture')\n", encoding="utf-8")
+
+            invocation = calib_cli.build_invocation(
+                "stereo",
+                "solve",
+                ["session.json", "--output", "calibration.json"],
+                source_root=root,
+            )
+
+            self.assertEqual(invocation[0], sys.executable)
+            self.assertEqual(Path(invocation[1]), script.resolve())
+            self.assertEqual(invocation[2:], ["solve", "session.json", "--output", "calibration.json"])
+
+    def test_unknown_command_returns_explicit_error(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = calib_cli.main(["stereo", "not-a-command"])
+        self.assertEqual(rc, 2)
+        self.assertIn("unknown stereo command", stderr.getvalue())
+
+    def test_group_help_and_list_are_dependency_free(self):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            rc = calib_cli.main(["imu", "--help"])
+        self.assertEqual(rc, 0)
+        self.assertIn("stationary", stdout.getvalue())
+        self.assertIn("allan", stdout.getvalue())
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            rc = calib_cli.main(["--list"])
+        self.assertEqual(rc, 0)
+        output = stdout.getvalue()
+        self.assertIn("stereo", output)
+        self.assertIn("camera-imu", output)
+
+    def test_dry_run_does_not_import_heavy_dependencies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tools").mkdir()
+            (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
+            script = root / "tools" / "analyze_imu_allan.py"
+            script.write_text("raise RuntimeError('must not execute')\n", encoding="utf-8")
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                rc = calib_cli.main(
+                    ["--source-root", str(root), "--dry-run", "imu", "allan", "trace.csv"]
+                )
+            self.assertEqual(rc, 0)
+            self.assertIn("analyze_imu_allan.py", stdout.getvalue())
+            self.assertIn("trace.csv", stdout.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

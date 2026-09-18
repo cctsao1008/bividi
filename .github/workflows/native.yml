@@ -22,6 +22,12 @@ jobs:
         run: python -m pip install -e ".[mcap]"
       - name: Python package unit tests
         run: python -m unittest discover -s tests
+      - name: Consolidated calibration CLI smoke test
+        run: |
+          bividi-calib --list
+          bividi-calib --dry-run stereo solve session.json --output calibration.json
+          bividi-calib --dry-run imu allan trace.csv
+          bividi-calib --dry-run camera-imu import-kalibr result.yaml
       - name: Parse calibration schemas
         run: python -c "import glob,json; [json.load(open(p, encoding='utf-8')) for p in glob.glob('calibration/schemas/*.json')]"
       - name: Characterization comparator self-test
