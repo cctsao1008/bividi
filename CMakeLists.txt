@@ -129,6 +129,22 @@ if(BIVIDI_WITH_OPENCV)
     else()
         message(STATUS "OpenCV imgproc/imgcodecs not found; Nori transport normalization and native replay disabled")
     endif()
+
+    # #9 is a downstream OpenCV geometry module, not part of bividi_core. Keep
+    # calib3d optional so acquisition/replay builds do not acquire a new hard
+    # dependency merely because depth is unavailable.
+    find_package(OpenCV QUIET COMPONENTS core imgproc calib3d)
+    if(OpenCV_FOUND)
+        add_library(bividi_depth STATIC
+            src/native/depth_opencv.cpp
+        )
+        target_include_directories(bividi_depth PUBLIC include ${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(bividi_depth PUBLIC bividi_core ${OpenCV_LIBS})
+        target_compile_features(bividi_depth PUBLIC cxx_std_17)
+        message(STATUS "Bividi calibrated StereoSGBM depth reference enabled")
+    else()
+        message(STATUS "OpenCV calib3d/imgproc not found; bividi_depth disabled")
+    endif()
 endif()
 
 if(BIVIDI_WITH_NORI_SDK AND TARGET bividi_nori AND TARGET bividi_nori_opencv)
@@ -259,6 +275,12 @@ if(BIVIDI_BUILD_TESTS)
         add_executable(bividi_replay_integrity_tests tests/native/test_replay_integrity.cpp)
         target_link_libraries(bividi_replay_integrity_tests PRIVATE bividi_replay)
         add_test(NAME bividi_replay_integrity_tests COMMAND bividi_replay_integrity_tests)
+    endif()
+
+    if(TARGET bividi_depth)
+        add_executable(bividi_depth_tests tests/native/test_depth.cpp)
+        target_link_libraries(bividi_depth_tests PRIVATE bividi_depth)
+        add_test(NAME bividi_depth_tests COMMAND bividi_depth_tests)
     endif()
 
     if(TARGET bividi_nori_opencv)
