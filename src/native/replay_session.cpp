@@ -214,6 +214,8 @@ struct ReplayCaptureSession::Impl {
         state.source_id = engineering_source_id(config, source.metadata());
         state.last_action = action;
         latest_preview = {};
+        latest_observation = {};
+        have_latest_observation = false;
         have_last_sequence = false;
         last_sequence = 0;
         fps_window_frames = 0;
@@ -246,6 +248,11 @@ struct ReplayCaptureSession::Impl {
         ++state.capture.frames;
         ++fps_window_frames;
         state.capture.state = CaptureState::running;
+
+        // Keep a normalized snapshot independent of the BGR engineering preview.
+        // SensorObservation copies retain camera storage via FrameLease.
+        latest_observation = observation;
+        have_latest_observation = true;
 
         const auto* camera_a = find_camera(observation, "camera_a");
         const auto* camera_b = find_camera(observation, "camera_b");
@@ -294,6 +301,8 @@ struct ReplayCaptureSession::Impl {
         state.capture.state = CaptureState::error;
         state.fps = 0.0;
         state.last_action = message;
+        latest_observation = {};
+        have_latest_observation = false;
         schedule_started = false;
         wake.notify_all();
     }
@@ -379,6 +388,8 @@ struct ReplayCaptureSession::Impl {
 
     SessionStatus state{};
     StereoPreviewFrame latest_preview{};
+    SensorObservation latest_observation{};
+    bool have_latest_observation = false;
 
     bool have_last_sequence = false;
     std::uint64_t last_sequence = 0;
@@ -406,6 +417,20 @@ bool ReplayCaptureSession::latest_stereo_preview(StereoPreviewFrame& out) const 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     out = impl_->latest_preview;
     return out.valid();
+}
+
+const SensorCapabilities& ReplayCaptureSession::observation_capabilities() const noexcept {
+    return impl_->source.capabilities();
+}
+
+bool ReplayCaptureSession::latest_observation(SensorObservation& out) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (!impl_->have_latest_observation) {
+        out = {};
+        return false;
+    }
+    out = impl_->latest_observation;
+    return true;
 }
 
 bool ReplayCaptureSession::toggle_capture() {

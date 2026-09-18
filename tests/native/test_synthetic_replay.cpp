@@ -1,12 +1,16 @@
 #include "bividi/observation.hpp"
+#include "bividi/observation_source.hpp"
 #include "bividi/replay.hpp"
+#include "bividi/replay_session.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -19,6 +23,49 @@ const bividi::CameraObservation& require_camera(
     throw std::runtime_error("missing expected synthetic camera stream: " + stream_id);
 }
 
+void test_replay_capture_session_observation_snapshot(const std::filesystem::path& session_dir) {
+    bividi::SensorObservation retained;
+    {
+        bividi::ReplaySessionConfig config{};
+        config.session_dir = session_dir;
+        config.rate = 1000.0;
+        bividi::ReplayCaptureSession session(config);
+
+        // The normalized tap is deliberately separate from CaptureSession. A
+        // downstream consumer must opt into ObservationSnapshotSource rather
+        // than treating the BGR engineering preview as sensor evidence.
+        bividi::ObservationSnapshotSource& source = session;
+        const auto& caps = source.observation_capabilities();
+        assert(caps.cameras.size() == 2);
+        assert(caps.stereo_pairs.size() == 1);
+        assert(caps.cameras[0].pixel_format == bividi::PixelFormat::gray8);
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (!source.latest_observation(retained) &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        assert(retained.sequence_present);
+        assert(retained.sequence >= 1000 && retained.sequence <= 1002);
+        assert(retained.evidence == bividi::EvidenceKind::synthetic);
+        assert(retained.cameras.size() == 2);
+
+        const auto conformance = bividi::validate_observation(retained, &caps);
+        assert(conformance.ok);
+    }
+
+    // The copied SensorObservation owns the source frame lifetime through its
+    // FrameLease copies; destroying the UI/session adapter must not invalidate
+    // the normalized snapshot handed to a downstream processor.
+    const auto& camera_a = require_camera(retained, "camera_a");
+    const auto& camera_b = require_camera(retained, "camera_b");
+    assert(camera_a.lease.valid());
+    assert(camera_b.lease.valid());
+    assert(!camera_a.image.empty());
+    assert(!camera_b.image.empty());
+    assert(camera_a.image.data[0] == camera_a.image.data[0]);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -27,8 +74,10 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    const std::filesystem::path session_dir(argv[1]);
+
     bividi::ReplayConfig config{};
-    config.session_dir = std::filesystem::path(argv[1]);
+    config.session_dir = session_dir;
     config.pacing = bividi::ReplayPacing::step;
     bividi::ReplaySource replay(config);
 
@@ -112,6 +161,8 @@ int main(int argc, char** argv) {
     assert(second.evidence == bividi::EvidenceKind::synthetic);
     assert(second.sequence_present && second.sequence == 1001);
     assert(second.continuity == bividi::ContinuityState::continuous);
+
+    test_replay_capture_session_observation_snapshot(session_dir);
 
     std::cout << "synthetic SensorRig native replay conformance: PASS\n";
     return 0;
