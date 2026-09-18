@@ -1,0 +1,129 @@
+{
+  "schema": "bividi.calibration.stereo.v1",
+  "calibration_id": "synthetic-depth-fixture-v1",
+  "provenance": {
+    "kind": "synthetic",
+    "source_session_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "physical_hardware_evidence": false,
+    "note": "Deterministic geometry matching tools/generate_synthetic_sensorrig.py; not physical AR0234 evidence."
+  },
+  "device": {
+    "model": "Bividi Synthetic SensorRig",
+    "serial": "SYN-STATIC-PLANE"
+  },
+  "capture": {
+    "mode_index": 0,
+    "pixel_format": "GRAY8",
+    "width": 96,
+    "height": 64,
+    "camera_a_identity": "camera_a",
+    "camera_b_identity": "camera_b"
+  },
+  "image": {
+    "width": 96,
+    "height": 64
+  },
+  "target": {
+    "target_id": "synthetic-no-physical-target",
+    "family": "charuco",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "camera_model": {
+    "projection": "pinhole",
+    "distortion": "opencv5"
+  },
+  "cameras": {
+    "camera_a": {
+      "K": [
+        [80.0, 0.0, 47.5],
+        [0.0, 80.0, 31.5],
+        [0.0, 0.0, 1.0]
+      ],
+      "D": [0.0, 0.0, 0.0, 0.0, 0.0],
+      "mono_rms_px": 0.0,
+      "per_view_reprojection_rms_px": [0.0],
+      "pinhole_fov_deg": {
+        "x": 61.92751306414704,
+        "y": 43.60281897270362
+      }
+    },
+    "camera_b": {
+      "K": [
+        [80.0, 0.0, 47.5],
+        [0.0, 80.0, 31.5],
+        [0.0, 0.0, 1.0]
+      ],
+      "D": [0.0, 0.0, 0.0, 0.0, 0.0],
+      "mono_rms_px": 0.0,
+      "per_view_reprojection_rms_px": [0.0],
+      "pinhole_fov_deg": {
+        "x": 61.92751306414704,
+        "y": 43.60281897270362
+      }
+    }
+  },
+  "stereo": {
+    "R_camera_b_from_camera_a": [
+      [1.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0],
+      [0.0, 0.0, 1.0]
+    ],
+    "T_camera_b_from_camera_a_m": [-0.1, 0.0, 0.0],
+    "baseline_m": 0.1,
+    "E": [
+      [0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.1],
+      [0.0, -0.1, 0.0]
+    ],
+    "F": [
+      [0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.00125],
+      [0.0, -0.00125, 0.0]
+    ],
+    "stereo_rms_px": 0.0,
+    "valid_pair_count": 3
+  },
+  "rectification": {
+    "R1": [
+      [1.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0],
+      [0.0, 0.0, 1.0]
+    ],
+    "R2": [
+      [1.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0],
+      [0.0, 0.0, 1.0]
+    ],
+    "P1": [
+      [80.0, 0.0, 47.5, 0.0],
+      [0.0, 80.0, 31.5, 0.0],
+      [0.0, 0.0, 1.0, 0.0]
+    ],
+    "P2": [
+      [80.0, 0.0, 47.5, -8.0],
+      [0.0, 80.0, 31.5, 0.0],
+      [0.0, 0.0, 1.0, 0.0]
+    ],
+    "Q": [
+      [1.0, 0.0, 0.0, -47.5],
+      [0.0, 1.0, 0.0, -31.5],
+      [0.0, 0.0, 0.0, 80.0],
+      [0.0, 0.0, 10.0, 0.0]
+    ],
+    "valid_roi_camera_a": [0, 0, 96, 64],
+    "valid_roi_camera_b": [0, 0, 96, 64],
+    "vertical_epipolar_abs_px": {
+      "count": 1,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0
+    }
+  },
+  "quality": {
+    "status": "EVIDENCE_ONLY_NO_THRESHOLDS",
+    "gates": {},
+    "policy_source": null
+  }
+}
