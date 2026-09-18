@@ -46,6 +46,7 @@ Commands already migrated under `src/bividi/` execute from the installed package
 ```bash
 bividi-calib stereo target-scale --help
 bividi-calib stereo geometry-review --help
+bividi-calib stereo repeatability --help
 ```
 
 Remaining compatibility-routed commands still locate the source checkout containing `tools/`. Their resolution order is:
@@ -123,7 +124,7 @@ The leaf implementation exit code is preserved by the router.
 | `stereo target/session/session-recorder/inspect/solve/validate/rectify` | `tools/stereo_calibration_workbench.py` |
 | `stereo target-scale` | installed `bividi.calibration.target_scale`; legacy wrapper `tools/review_calibration_target_scale.py` |
 | `stereo geometry-review` | installed `bividi.calibration.stereo_geometry`; legacy wrapper `tools/review_stereo_geometry.py` |
-| `stereo repeatability` | `tools/compare_stereo_calibrations.py` |
+| `stereo repeatability` | installed `bividi.calibration.stereo_repeatability`; legacy wrapper `tools/compare_stereo_calibrations.py` |
 | `stereo promote` | `tools/stereo_calibration_provenance.py` |
 | `stereo report` | `tools/render_stereo_calibration_report.py` |
 | `stereo campaign` | `tools/plan_stereo_calibration_campaign.py` |
@@ -143,7 +144,7 @@ The leaf implementation exit code is preserved by the router.
 | `camera-imu promote` | `tools/camera_imu_calibration_provenance.py` |
 | `camera-imu campaign` | `tools/plan_camera_imu_physical_campaign.py` |
 
-The `target-scale` and `geometry-review` migrations are the first package-native leaves. Their legacy wrappers delegate to installed modules while preserving the historical artifact `provenance.tool`, schemas, named-policy requirements, and exit-code semantics. This is the template for subsequent dependency-light migrations.
+The `target-scale`, `geometry-review`, and `repeatability` migrations are the first package-native leaves. Their legacy wrappers delegate to installed modules while preserving the historical artifact `provenance.tool`, schemas, named-policy requirements, and exit-code semantics. This is the template for subsequent dependency-light migrations.
 
 ## Central self-test manifest
 
@@ -167,6 +168,6 @@ The router and self-test manifest use only the Python standard library. Optional
 
 ## Current limitations / next #60 slices
 
-Two dependency-light stereo evidence implementations (`stereo target-scale` and `stereo geometry-review`) have moved under the installed package. Most commands still dispatch into source-tree scripts and therefore still require a checkout containing `tools/`.
+Three dependency-light stereo evidence implementations (`stereo target-scale`, `stereo geometry-review`, and `stereo repeatability`) have moved under the installed package. Most commands still dispatch into source-tree scripts and therefore still require a checkout containing `tools/`.
 
-The next structural work is to migrate additional reusable dependency-light implementations under `src/bividi/calibration/` with the old scripts reduced to thin wrappers. Good next candidates are stereo repeatability and report generation. Heavier OpenCV/ROS-facing implementations should follow without importing those optional dependencies into unrelated commands. Common machine-readable output/version/exit-code conventions can be tightened as the implementations move, without changing existing artifact schemas or evidence gates.
+The next structural work is to migrate additional reusable dependency-light implementations under `src/bividi/calibration/` with the old scripts reduced to thin wrappers. Stereo report generation is a good next candidate, followed by the evidence/promotion and campaign surfaces if their semantics remain cleanly packageable. Heavier OpenCV/ROS-facing implementations should follow without importing those optional dependencies into unrelated commands. Common machine-readable output/version/exit-code conventions can be tightened as the implementations move, without changing existing artifact schemas or evidence gates.
