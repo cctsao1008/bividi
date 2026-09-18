@@ -39,6 +39,31 @@ bividi::TimePoint device_us(std::uint64_t ticks, const std::string& id) {
     return {ticks, bividi::TimeUnit::microseconds, bividi::ClockDomain::device, id, true};
 }
 
+bividi::RawTimestampEvidence raw_device_us(std::uint32_t ticks, const std::string& id) {
+    return {ticks, 32, bividi::TimeUnit::microseconds, id, true};
+}
+
+bividi::ExposureTiming exposure(std::uint64_t start, std::uint64_t end) {
+    bividi::ExposureTiming result{};
+    result.start = device_us(start, "fixture.camera");
+    result.end = device_us(end, "fixture.camera");
+    result.raw_start = raw_device_us(static_cast<std::uint32_t>(start), "fixture.camera");
+    result.raw_end = raw_device_us(static_cast<std::uint32_t>(end), "fixture.camera");
+    return result;
+}
+
+bividi::ImuObservation imu_sample(std::uint64_t ticks, int bias = 0) {
+    bividi::ImuObservation imu{};
+    imu.sensor_id = "imu0";
+    imu.sample_time = device_us(ticks, "fixture.imu");
+    imu.raw_time = raw_device_us(static_cast<std::uint32_t>(ticks), "fixture.imu");
+    imu.accel_raw_counts = {1 + bias, 2 + bias, 3 + bias};
+    imu.gyro_raw_counts = {4 + bias, 5 + bias, 6 + bias};
+    imu.raw_valid = true;
+    imu.validity = bividi::ObservationValidity::valid;
+    return imu;
+}
+
 bividi::SensorObservation make_observation(std::uint64_t sequence) {
     bividi::SensorObservation observation{};
     observation.source_id = "fixture";
@@ -51,30 +76,32 @@ bividi::SensorObservation make_observation(std::uint64_t sequence) {
     observation.continuity = bividi::ContinuityState::continuous;
     observation.timing.host_receive = host_ns(1'000'000'000ULL + sequence * 1'000'000ULL);
 
-    // Fault tests do not dereference image bytes. An invalid camera observation
-    // is still sufficient to exercise stream/pair metadata mutation.
+    // Fault tests do not dereference image bytes. Invalid camera observations
+    // still carry timing evidence so device-clock mutation can be tested without
+    // manufacturing an image lease.
     bividi::CameraObservation a{};
     a.stream_id = "camera_a";
+    a.exposure = exposure(1'000 + sequence, 1'100 + sequence);
     a.validity = bividi::ObservationValidity::invalid;
     bividi::CameraObservation b{};
     b.stream_id = "camera_b";
+    b.exposure = exposure(1'000 + sequence, 1'100 + sequence);
     b.validity = bividi::ObservationValidity::invalid;
     observation.cameras = {a, b};
     observation.stereo_pairs.push_back({"stereo0", bividi::SynchronizationState::unknown});
 
-    bividi::ImuObservation imu{};
-    imu.sensor_id = "imu0";
-    imu.sample_time = device_us(2'000 + sequence, "fixture.imu");
-    imu.raw_time = {2'000 + sequence, 32, bividi::TimeUnit::microseconds, "fixture.imu", true};
-    imu.accel_raw_counts = {1, 2, 3};
-    imu.gyro_raw_counts = {4, 5, 6};
-    imu.raw_valid = true;
-    imu.validity = bividi::ObservationValidity::valid;
-    observation.imu.push_back(imu);
+    observation.imu.push_back(imu_sample(2'000 + sequence));
     return observation;
 }
 
-const char* kRecipe = R"JSON({
+bividi::SensorObservation make_multi_imu_observation(std::uint64_t sequence) {
+    auto observation = make_observation(sequence);
+    observation.imu.push_back(imu_sample(2'010 + sequence, 10));
+    observation.imu.push_back(imu_sample(2'020 + sequence, 20));
+    return observation;
+}
+
+const char* kRecipeV1 = R"JSON({
   "schema": "bividi.replay_fault_recipe.v1",
   "seed": "18446744073709551615",
   "rules": [
@@ -144,10 +171,48 @@ const char* kRecipe = R"JSON({
   ]
 })JSON";
 
-void test_recipe_load_and_deterministic_actions() {
-    TempFile recipe_file(kRecipe);
+const char* kRecipeV2 = R"JSON({
+  "schema": "bividi.replay_fault_recipe.v2",
+  "seed": 42,
+  "rules": [
+    {
+      "id": "camera-b-backward",
+      "at_source_position": 0,
+      "action": "camera_exposure_time_delta_us",
+      "stream_id": "camera_b",
+      "delta": -100,
+      "expected_disposition": "consumer_degraded"
+    },
+    {
+      "id": "imu-index-duplicate-time",
+      "at_source_position": 0,
+      "action": "imu_sample_time_delta_at_index_us",
+      "imu_index": 1,
+      "delta": -10,
+      "expected_disposition": "consumer_reject"
+    },
+    {
+      "id": "duplicate-one-imu",
+      "at_source_position": 1,
+      "action": "duplicate_imu_sample",
+      "imu_index": 0,
+      "copies": 2,
+      "expected_disposition": "consumer_reject"
+    },
+    {
+      "id": "drop-middle-imu",
+      "at_source_position": 2,
+      "action": "drop_imu_sample",
+      "imu_index": 1,
+      "expected_disposition": "explicit_gap"
+    }
+  ]
+})JSON";
+
+void test_v1_recipe_remains_compatible() {
+    TempFile recipe_file(kRecipeV1);
     const auto recipe = bividi::load_replay_fault_recipe(recipe_file.path);
-    assert(recipe.schema == bividi::kReplayFaultRecipeSchema);
+    assert(recipe.schema == bividi::kReplayFaultRecipeSchemaV1);
     assert(recipe.seed == std::numeric_limits<std::uint64_t>::max());
     assert(recipe.rules.size() == 9);
     assert(recipe.rules[0].action == bividi::ReplayFaultAction::duplicate);
@@ -178,8 +243,6 @@ void test_recipe_load_and_deterministic_actions() {
     assert(output.size() == 1);
     assert(output[0].sequence == 10);
     assert(output[0].imu[0].sample_time.ticks == two.imu[0].sample_time.ticks + 10'000ULL);
-    // Raw finite-width evidence is deliberately unchanged, making the injected
-    // normalized timestamp jump observable instead of silently repairing it.
     assert(output[0].imu[0].raw_time.raw_ticks == two.imu[0].raw_time.raw_ticks);
     assert(output[0].continuity == bividi::ContinuityState::discontinuity);
     assert(output[0].continuity_epoch == 8);
@@ -192,19 +255,98 @@ void test_recipe_load_and_deterministic_actions() {
     interceptor.transform(4, make_observation(14), output);
     assert(output.size() == 1);
     assert(output[0].imu.empty());
-    // Cameras remain present, so this particular mutation remains structurally
-    // representable. Consumers still see the explicit recipe expectation.
     assert(output[0].cameras.size() == 2);
 
     const auto stats = interceptor.stats();
     assert(stats.source_observations == 5);
-    assert(stats.emitted_observations == 5);  // 2 + 1 + 1 + 0 + 1
+    assert(stats.emitted_observations == 5);
     assert(stats.triggered_rules == 9);
 
     interceptor.reset();
     assert(interceptor.stats().source_observations == 0);
     assert(interceptor.stats().emitted_observations == 0);
     assert(interceptor.stats().triggered_rules == 0);
+}
+
+void test_v2_device_clock_and_indexed_imu_actions() {
+    TempFile recipe_file(kRecipeV2);
+    const auto recipe = bividi::load_replay_fault_recipe(recipe_file.path);
+    assert(recipe.schema == bividi::kReplayFaultRecipeSchemaV2);
+    assert(recipe.rules.size() == 4);
+
+    bividi::RecipeReplayInterceptor interceptor(recipe);
+    std::vector<bividi::SensorObservation> output;
+
+    const auto zero = make_multi_imu_observation(20);
+    interceptor.transform(0, zero, output);
+    assert(output.size() == 1);
+    assert(output[0].cameras[0].exposure.start.ticks == zero.cameras[0].exposure.start.ticks);
+    assert(output[0].cameras[1].exposure.start.ticks == zero.cameras[1].exposure.start.ticks - 100ULL);
+    assert(output[0].cameras[1].exposure.end.ticks == zero.cameras[1].exposure.end.ticks - 100ULL);
+    // Normalized exposure moved but finite-width transport evidence was not repaired.
+    assert(output[0].cameras[1].exposure.raw_start.raw_ticks == zero.cameras[1].exposure.raw_start.raw_ticks);
+    assert(output[0].cameras[1].exposure.raw_end.raw_ticks == zero.cameras[1].exposure.raw_end.raw_ticks);
+    assert(output[0].imu.size() == 3);
+    assert(output[0].imu[1].sample_time.ticks == output[0].imu[0].sample_time.ticks);
+    assert(output[0].imu[1].raw_time.raw_ticks == zero.imu[1].raw_time.raw_ticks);
+
+    output.clear();
+    const auto one = make_multi_imu_observation(21);
+    interceptor.transform(1, one, output);
+    assert(output.size() == 1);
+    assert(output[0].imu.size() == 5);
+    assert(output[0].imu[0].sample_time.ticks == output[0].imu[1].sample_time.ticks);
+    assert(output[0].imu[0].sample_time.ticks == output[0].imu[2].sample_time.ticks);
+    assert(output[0].imu[3].sample_time.ticks == one.imu[1].sample_time.ticks);
+
+    output.clear();
+    const auto two = make_multi_imu_observation(22);
+    interceptor.transform(2, two, output);
+    assert(output.size() == 1);
+    assert(output[0].imu.size() == 2);
+    assert(output[0].imu[0].sample_time.ticks == two.imu[0].sample_time.ticks);
+    assert(output[0].imu[1].sample_time.ticks == two.imu[2].sample_time.ticks);
+
+    const auto stats = interceptor.stats();
+    assert(stats.source_observations == 3);
+    assert(stats.emitted_observations == 3);
+    assert(stats.triggered_rules == 4);
+}
+
+void test_v1_rejects_v2_only_action() {
+    TempFile recipe_file(R"JSON({
+      "schema": "bividi.replay_fault_recipe.v1",
+      "seed": 0,
+      "rules": [{
+        "id": "too-new",
+        "at_source_position": 0,
+        "action": "drop_imu_sample",
+        "imu_index": 0,
+        "expected_disposition": "explicit_gap"
+      }]
+    })JSON");
+
+    bool rejected = false;
+    try {
+        (void)bividi::load_replay_fault_recipe(recipe_file.path);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    assert(rejected);
+
+    bividi::ReplayFaultRecipe programmatic{};
+    programmatic.schema = bividi::kReplayFaultRecipeSchemaV1;
+    bividi::ReplayFaultRule rule{};
+    rule.id = "too-new-programmatic";
+    rule.action = bividi::ReplayFaultAction::drop_imu_sample;
+    programmatic.rules.push_back(rule);
+    rejected = false;
+    try {
+        bividi::validate_replay_fault_recipe(programmatic);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    assert(rejected);
 }
 
 void test_programmatic_validation_rejects_ambiguous_drop_position() {
@@ -253,8 +395,36 @@ void test_json_rejects_unknown_action_fields() {
     assert(rejected);
 }
 
+void test_indexed_actions_reject_missing_index() {
+    TempFile recipe_file(R"JSON({
+      "schema": "bividi.replay_fault_recipe.v2",
+      "seed": 0,
+      "rules": [{
+        "id": "bad-index",
+        "at_source_position": 0,
+        "action": "drop_imu_sample",
+        "imu_index": 99,
+        "expected_disposition": "consumer_reject"
+      }]
+    })JSON");
+    const auto recipe = bividi::load_replay_fault_recipe(recipe_file.path);
+    bividi::RecipeReplayInterceptor interceptor(recipe);
+    std::vector<bividi::SensorObservation> output;
+    bool rejected = false;
+    try {
+        interceptor.transform(0, make_observation(1), output);
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    assert(rejected);
+}
+
 void test_fault_name_surfaces() {
     assert(std::string(bividi::replay_fault_action_name(bividi::ReplayFaultAction::remove_camera)) == "remove_camera");
+    assert(std::string(bividi::replay_fault_action_name(
+               bividi::ReplayFaultAction::camera_exposure_time_delta_us)) == "camera_exposure_time_delta_us");
+    assert(std::string(bividi::replay_fault_action_name(
+               bividi::ReplayFaultAction::duplicate_imu_sample)) == "duplicate_imu_sample");
     assert(std::string(bividi::replay_fault_expected_disposition_name(
                bividi::ReplayFaultExpectedDisposition::reset_derived_pipeline)) == "reset_derived_pipeline");
 }
@@ -262,9 +432,12 @@ void test_fault_name_surfaces() {
 }  // namespace
 
 int main() {
-    test_recipe_load_and_deterministic_actions();
+    test_v1_recipe_remains_compatible();
+    test_v2_device_clock_and_indexed_imu_actions();
+    test_v1_rejects_v2_only_action();
     test_programmatic_validation_rejects_ambiguous_drop_position();
     test_json_rejects_unknown_action_fields();
+    test_indexed_actions_reject_missing_index();
     test_fault_name_surfaces();
     std::cout << "bividi replay fault recipe tests: PASS\n";
     return 0;
