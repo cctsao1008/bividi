@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
-import validate_calibration_artifact as calibration_validator
+from . import artifact_validator as calibration_validator
 
 EXPORT_SCHEMA = "bividi.kalibr.imu_export.v1"
 
@@ -67,9 +67,6 @@ def git_revision() -> str | None:
 
 
 def select_update_rate(data: dict[str, Any]) -> tuple[float, str]:
-    # Prefer timestamp-derived effective rate when available because it directly
-    # represents the recorded specimen cadence. Fall back to an explicit
-    # measured rate field; never use nominal rate silently.
     timing_rate = nested(data, "timing.effective_rate_hz")
     if isinstance(timing_rate, (int, float)) and not isinstance(timing_rate, bool):
         value = float(timing_rate)
