@@ -16,7 +16,10 @@ bividi::SensorCapabilities stereo_imu_capabilities() {
     };
     caps.stereo_pairs = {{"stereo0", "camera_a", "camera_b"}};
     caps.imu = true;
-    caps.timing.device_frame_time = true;
+    // DECXIN exposure start/end are explicit. The generic visual frame-time
+    // reference remains unset until a consumer/calibration path chooses ES,
+    // midpoint, EE, or another documented convention.
+    caps.timing.device_frame_time = false;
     caps.timing.exposure_start_end = true;
     caps.timing.imu_sample_time = true;
     caps.trigger_modes = {bividi::TriggerMode::free_run, bividi::TriggerMode::software};
@@ -110,15 +113,20 @@ void test_decxin_normalization() {
     assert(observation.contract_version == bividi::kObservationContractVersion);
     assert(observation.source_id == "decxin:test");
     assert(observation.evidence == bividi::EvidenceKind::synthetic);
+    assert(observation.sequence_present);
     assert(observation.sequence == 42);
     assert(observation.continuity_epoch == 7);
     assert(observation.timing.host_receive.present);
     assert(observation.timing.host_receive.domain == bividi::ClockDomain::host_monotonic);
     assert(observation.timing.host_receive.unit == bividi::TimeUnit::nanoseconds);
     assert(observation.cameras.size() == 2);
+    assert(!observation.cameras[0].frame_time.present);
     assert(observation.cameras[0].exposure.start.domain == bividi::ClockDomain::device);
     assert(observation.cameras[0].exposure.start.unit == bividi::TimeUnit::microseconds);
     assert(observation.cameras[0].exposure.raw_start.bit_width == 32);
+    assert(observation.stereo_pairs.size() == 1);
+    assert(observation.stereo_pairs[0].pair_id == "stereo0");
+    assert(observation.stereo_pairs[0].synchronization == bividi::SynchronizationState::unknown);
     assert(observation.imu.size() == 1);
     assert(observation.imu[0].raw_valid);
     assert(!observation.imu[0].si_valid);
@@ -164,6 +172,40 @@ void test_conformance_rejects_wrong_topology_and_clock() {
     imu.validity = bividi::ObservationValidity::valid;
     observation.imu.push_back(imu);
 
+    observation.stereo_pairs.push_back({"missing-pair", bividi::SynchronizationState::synchronized});
+
+    const auto result = bividi::validate_observation(observation, &caps);
+    assert(!result.ok);
+}
+
+void test_declared_device_frame_time_must_be_present() {
+    auto caps = stereo_imu_capabilities();
+    caps.timing.device_frame_time = true;
+
+    std::vector<std::uint8_t> pixels(24, 0);
+    auto lease = bividi::FrameLease::adopt(new int(1), [](int* value) noexcept { delete value; });
+
+    bividi::SensorObservation observation{};
+    observation.source_id = "synthetic:frame-time";
+    observation.evidence = bividi::EvidenceKind::synthetic;
+    observation.validity = bividi::ObservationValidity::valid;
+    observation.timing.host_receive = {
+        1,
+        bividi::TimeUnit::nanoseconds,
+        bividi::ClockDomain::host_monotonic,
+        "host.steady_clock",
+        true,
+    };
+
+    bividi::CameraObservation camera{};
+    camera.stream_id = "camera_a";
+    camera.lease = lease;
+    camera.image = {pixels.data(), 4, 2, 12, 3, bividi::PixelFormat::bgr24};
+    camera.exposure.start = {10, bividi::TimeUnit::microseconds, bividi::ClockDomain::device, "cam", true};
+    camera.exposure.end = {20, bividi::TimeUnit::microseconds, bividi::ClockDomain::device, "cam", true};
+    camera.validity = bividi::ObservationValidity::valid;
+    observation.cameras.push_back(camera);
+
     const auto result = bividi::validate_observation(observation, &caps);
     assert(!result.ok);
 }
@@ -175,6 +217,7 @@ int main() {
     test_clock_domains_remain_distinct();
     test_decxin_normalization();
     test_conformance_rejects_wrong_topology_and_clock();
+    test_declared_device_frame_time_must_be_present();
     std::cout << "bividi observation contract test: PASS\n";
     return 0;
 }
