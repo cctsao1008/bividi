@@ -20,7 +20,13 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-import audit_imu_timing
+try:
+    from bividi.calibration import imu_timing as audit_imu_timing
+except ModuleNotFoundError:
+    # Keep direct source-checkout invocation working before an editable install.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from bividi.calibration import imu_timing as audit_imu_timing
+
 import validate_calibration_artifact
 
 SESSION_SCHEMA = "bividi.calibration.kalibr_dynamic_session.v1"
@@ -304,23 +310,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         self_test()
         return 0
     if args.session is None or args.artifact is None:
-        print("session and artifact are required", file=sys.stderr)
+        print("review_camera_imu_time_offset: session and artifact paths are required", file=sys.stderr)
         return 2
     try:
         report = analyze(
-            args.session.resolve(), args.artifact.resolve(),
+            args.session.resolve(),
+            args.artifact.resolve(),
             max_abs_shift_us=args.max_abs_shift_us,
             max_shifted_nearest_p95_us=args.max_shifted_nearest_p95_us,
         )
-    except (ReviewError, ValueError, OSError) as exc:
-        print(f"camera-IMU temporal review failed: {exc}", file=sys.stderr)
-        return 3
-    if args.output_prefix is not None:
-        args.output_prefix.with_suffix(".time-review.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        args.output_prefix.with_suffix(".time-review.md").write_text(render_markdown(report) + "\n", encoding="utf-8")
+    except ReviewError as exc:
+        print(f"review_camera_imu_time_offset: {exc}", file=sys.stderr)
+        return 2
+
+    text = json.dumps(report, indent=2) + "\n"
+    markdown = render_markdown(report) + "\n"
+    if args.output_prefix is None:
+        print(text, end="")
+        print(markdown, end="")
     else:
-        print(render_markdown(report))
-    return 1 if report["status"] == "FAIL" else 0
+        args.output_prefix.parent.mkdir(parents=True, exist_ok=True)
+        args.output_prefix.with_suffix(".json").write_text(text, encoding="utf-8")
+        args.output_prefix.with_suffix(".md").write_text(markdown, encoding="utf-8")
+    return 3 if report["status"] == "FAIL" else 0
 
 
 if __name__ == "__main__":

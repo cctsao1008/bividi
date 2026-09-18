@@ -1,7 +1,7 @@
 """Stable behavior contract for package-native calibration commands.
 
-This module freezes behavior already demonstrated by migrated calibration leaves.
-It is descriptive/contractual metadata, not a replacement implementation layer:
+This module freezes behavior demonstrated by migrated calibration leaves. It is
+descriptive/contractual metadata, not a replacement implementation layer:
 artifact schemas, numerical gates, and evidence semantics remain owned by each
 leaf module.
 """
@@ -19,12 +19,15 @@ OutputRole = Literal[
     "machine-evidence-json",
     "human-report-markdown",
     "orchestration-json-markdown",
+    "machine-evidence-json-and-human-markdown",
 ]
 PolicyRole = Literal[
     "named-source-required-for-explicit-gates",
     "promotion-requires-manifest-and-evidence-policy",
     "presentation-only",
     "recorded-orchestration-metadata",
+    "analysis-parameter-no-acceptance-gate",
+    "explicit-scale-source-no-acceptance-gate",
 ]
 
 
@@ -114,7 +117,38 @@ STEREO_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     ),
 )
 
-_INDEX = {item.key: item for item in STEREO_COMMAND_CONTRACTS}
+
+IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="imu",
+        name="timing-audit",
+        module="bividi.calibration.imu_timing",
+        compatibility_tool="audit_imu_timing.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="analysis-parameter-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+    CalibrationCommandContract(
+        group="imu",
+        name="stationary",
+        module="bividi.calibration.imu_stationary",
+        compatibility_tool="analyze_imu_stationary.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="explicit-scale-source-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+)
+
+
+COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    STEREO_COMMAND_CONTRACTS + IMU_COMMAND_CONTRACTS
+)
+
+_INDEX = {item.key: item for item in COMMAND_CONTRACTS}
 
 
 def contract_for(group: str, name: str) -> CalibrationCommandContract:
