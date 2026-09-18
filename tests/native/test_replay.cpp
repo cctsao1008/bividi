@@ -1,4 +1,5 @@
 #include "bividi/replay.hpp"
+#include "bividi/replay_session.hpp"
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -85,6 +87,16 @@ void make_fixture(const fs::path& root, bool mismatched_identity = false) {
         "0,10,1000000000,1000,1100,1000,1100,0,true,1050,1050,1,2,3,4,5,6\n"
         "1," + second_sequence + ",1001000000,2000,2100,2000,2100,0,true,2050,2050,7,8,9,10,11,12\n"
         "2,12,1002000000,3000,3100,3000,3100,0,false,3050,3050,13,14,15,16,17,18\n");
+}
+
+template <typename Predicate>
+bool wait_for(Predicate predicate, std::chrono::milliseconds timeout = std::chrono::milliseconds(2000)) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return predicate();
 }
 
 void test_step_replay_preserves_observations() {
@@ -192,6 +204,62 @@ void test_scaled_replay_uses_separate_schedule_clock() {
     assert(observation.timing.replay_schedule.ticks == 1000000ULL);
 }
 
+void test_replay_capture_session_preview_and_controls() {
+    TempSession temp("session");
+    make_fixture(temp.path);
+
+    bividi::ReplaySessionConfig config{};
+    config.session_dir = temp.path;
+    config.rate = 1.0;
+    config.start_paused = true;
+    bividi::ReplayCaptureSession session(config);
+
+    auto status = session.snapshot();
+    assert(status.capture.state == bividi::CaptureState::paused);
+    assert(status.capture.frames == 0);
+    assert(status.source_id == "replay:nori:SYN-001");
+    assert(status.nominal_fps == 1000.0);
+
+    assert(!session.set_exposure_us(5000));
+    assert(!session.set_gain_x10(20));
+    assert(!session.cycle_trigger());
+
+    assert(session.toggle_capture());
+    assert(wait_for([&] {
+        const auto current = session.snapshot();
+        return current.capture.state == bividi::CaptureState::idle &&
+               current.capture.frames == 3;
+    }));
+
+    status = session.snapshot();
+    assert(status.capture.frames == 3);
+    assert(status.capture.drops == 0);
+    assert(status.exposure_start_us == 3000);
+    assert(status.exposure_end_us == 3100);
+
+    bividi::StereoPreviewFrame preview;
+    assert(session.latest_stereo_preview(preview));
+    assert(preview.valid());
+    assert(preview.sequence == 12);
+    assert(preview.camera_a.pixel_format == bividi::PixelFormat::bgr24);
+    assert(preview.camera_b.pixel_format == bividi::PixelFormat::bgr24);
+    assert(preview.camera_a.bytes_per_pixel == 3);
+    assert(preview.camera_a.data[0] == 50);
+    assert(preview.camera_a.data[1] == 50);
+    assert(preview.camera_a.data[2] == 50);
+
+    // Toggle at EOF is defined as restart from the beginning. This makes the
+    // engineering UI deterministic without changing original observation time.
+    assert(session.toggle_capture());
+    assert(wait_for([&] { return session.snapshot().capture.frames > 0; }));
+    assert(session.toggle_capture());
+    assert(session.snapshot().capture.state == bividi::CaptureState::paused);
+
+    // Reconnect/reset restarts playback and resumes it.
+    assert(session.reconnect());
+    assert(wait_for([&] { return session.snapshot().capture.frames > 0; }));
+}
+
 void test_cross_csv_identity_mismatch_is_rejected() {
     TempSession temp("mismatch");
     make_fixture(temp.path, true);
@@ -230,6 +298,7 @@ void test_cross_csv_identity_mismatch_is_rejected() {
 int main() {
     test_step_replay_preserves_observations();
     test_scaled_replay_uses_separate_schedule_clock();
+    test_replay_capture_session_preview_and_controls();
     test_cross_csv_identity_mismatch_is_rejected();
     std::cout << "bividi replay test: PASS\n";
     return 0;
