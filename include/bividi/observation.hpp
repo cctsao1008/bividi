@@ -39,6 +39,13 @@ enum class ContinuityState {
     reinitialized,
 };
 
+enum class SynchronizationState {
+    unknown,
+    synchronized,
+    unsynchronized,
+    degraded,
+};
+
 enum class ClockDomain {
     unknown,
     host_monotonic,
@@ -106,6 +113,7 @@ struct CameraObservation {
     std::string stream_id;
     FrameLease lease{};
     ImageView image{};
+    TimePoint frame_time{};
     ExposureTiming exposure{};
     ObservationValidity validity = ObservationValidity::invalid;
 
@@ -133,6 +141,11 @@ struct ImuObservation {
     ObservationValidity validity = ObservationValidity::invalid;
 };
 
+struct StereoPairStatus {
+    std::string pair_id;
+    SynchronizationState synchronization = SynchronizationState::unknown;
+};
+
 struct SensorObservation {
     std::uint32_t contract_version = kObservationContractVersion;
     std::string source_id;
@@ -141,6 +154,7 @@ struct SensorObservation {
     ObservationValidity validity = ObservationValidity::invalid;
 
     std::uint64_t sequence = 0;
+    bool sequence_present = false;
     std::uint64_t continuity_epoch = 0;
     ContinuityState continuity = ContinuityState::continuous;
 
@@ -150,6 +164,7 @@ struct SensorObservation {
 
     std::vector<CameraObservation> cameras;
     std::vector<ImuObservation> imu;
+    std::vector<StereoPairStatus> stereo_pairs;
 };
 
 struct ConformanceResult {
