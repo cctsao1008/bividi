@@ -1,5 +1,9 @@
 #include "bividi/session.hpp"
 
+#ifdef BIVIDI_HAVE_REPLAY_SESSION
+#include "bividi/replay_session.hpp"
+#endif
+
 #ifdef BIVIDI_HAVE_NORI_SESSION
 #include "bividi/nori_session.hpp"
 #endif
@@ -54,6 +58,20 @@ std::uint32_t parse_u32(const char* value, const char* name) {
     }
 }
 
+double parse_positive_double(const char* value, const char* name) {
+    try {
+        std::size_t used = 0;
+        const auto parsed = std::stod(value, &used);
+        if (value[used] != '\0' || !(parsed > 0.0) || !std::isfinite(parsed)) {
+            throw std::out_of_range("range");
+        }
+        return parsed;
+    } catch (...) {
+        std::cerr << "invalid " << name << ": " << value << '\n';
+        std::exit(2);
+    }
+}
+
 void draw_synthetic_eye(
     cv::Mat& image,
     std::uint64_t frame,
@@ -88,7 +106,7 @@ void draw_synthetic_eye(
         cv::LINE_AA);
 }
 
-cv::Mat render_live_eye(const bividi::ImageView& view, bool camera_b) {
+cv::Mat render_live_eye(const bividi::ImageView& view, bool camera_b, bool replay) {
     if (view.empty() || view.pixel_format != bividi::PixelFormat::bgr24 || view.bytes_per_pixel != 3) {
         return {};
     }
@@ -113,9 +131,11 @@ cv::Mat render_live_eye(const bividi::ImageView& view, bool camera_b) {
     const int y = (kEyeHeight - height) / 2;
     resized.copyTo(canvas(cv::Rect(x, y, width, height)));
 
+    const std::string label = std::string(camera_b ? "Camera B - " : "Camera A - ") +
+                              (replay ? "replay" : "live");
     cv::putText(
         canvas,
-        camera_b ? "Camera B - live" : "Camera A - live",
+        label,
         cv::Point(24, 34),
         cv::FONT_HERSHEY_SIMPLEX,
         0.72,
@@ -129,7 +149,7 @@ cv::Mat render_waiting_eye(const bividi::SessionStatus& state, bool camera_b) {
     cv::Mat image(kEyeHeight, kEyeWidth, CV_8UC3, cv::Scalar(22, 24, 28));
     cv::putText(
         image,
-        camera_b ? "Camera B - waiting for live frame" : "Camera A - waiting for live frame",
+        camera_b ? "Camera B - waiting for frame" : "Camera A - waiting for frame",
         cv::Point(34, kEyeHeight / 2 - 8),
         cv::FONT_HERSHEY_SIMPLEX,
         0.62,
@@ -165,10 +185,11 @@ cv::Mat render(
     const bividi::StereoPreviewFrame* preview) {
     cv::Mat camera_a;
     cv::Mat camera_b;
+    const bool replay = state.source_id.rfind("replay:", 0) == 0;
 
     if (preview != nullptr && preview->valid()) {
-        camera_a = render_live_eye(preview->camera_a, false);
-        camera_b = render_live_eye(preview->camera_b, true);
+        camera_a = render_live_eye(preview->camera_a, false, replay);
+        camera_b = render_live_eye(preview->camera_b, true, replay);
     }
 
     if (camera_a.empty() || camera_b.empty()) {
@@ -195,11 +216,15 @@ cv::Mat render(
           << "  dup " << state.capture.duplicates << "  ooo " << state.capture.out_of_order;
     put_status(panel, 0, line0.str(), 0.58);
 
-    std::ostringstream line1;
-    line1 << "Exposure: " << state.exposure_us << " us  |  Gain: "
-          << state.gain_x10 / 10.0 << "x  |  Trigger: "
-          << bividi::trigger_mode_name(state.trigger_mode);
-    put_status(panel, 1, line1.str());
+    if (replay) {
+        put_status(panel, 1, "Replay source: exposure / gain / trigger controls are unavailable");
+    } else {
+        std::ostringstream line1;
+        line1 << "Exposure: " << state.exposure_us << " us  |  Gain: "
+              << state.gain_x10 / 10.0 << "x  |  Trigger: "
+              << bividi::trigger_mode_name(state.trigger_mode);
+        put_status(panel, 1, line1.str());
+    }
 
     std::ostringstream line2;
     line2 << "ES: " << state.exposure_start_us << " us  |  EE: " << state.exposure_end_us
@@ -207,7 +232,9 @@ cv::Mat render(
     put_status(panel, 2, line2.str());
 
     put_status(panel, 3, "Keys: SPACE pause/resume   T trigger   C reconnect/reset   S snapshot   Q/ESC quit");
-    put_status(panel, 4, "Trackbars: Exposure / Gain   |   Live controls are serialized through CaptureSession.");
+    put_status(panel, 4, replay
+        ? "Replay: SPACE pause/resume, C restarts the recorded timeline."
+        : "Trackbars: Exposure / Gain   |   Live controls are serialized through CaptureSession.");
     put_status(panel, 5, "Last: " + state.last_action, 0.50);
 
     cv::Mat canvas;
@@ -219,9 +246,24 @@ std::unique_ptr<bividi::CaptureSession> make_session(
     const std::string& source,
     std::uint32_t device,
     std::uint32_t mode,
-    std::uint32_t timeout_ms) {
+    std::uint32_t timeout_ms,
+    const std::string& replay_session,
+    double replay_rate) {
     if (source == "synthetic") {
         return std::make_unique<bividi::SyntheticCaptureSession>();
+    }
+    if (source == "replay") {
+#ifdef BIVIDI_HAVE_REPLAY_SESSION
+        if (replay_session.empty()) {
+            throw std::runtime_error("replay source requires --session PATH");
+        }
+        bividi::ReplaySessionConfig config{};
+        config.session_dir = replay_session;
+        config.rate = replay_rate;
+        return std::make_unique<bividi::ReplayCaptureSession>(std::move(config));
+#else
+        throw std::runtime_error("Replay source was requested but this build does not include native replay support");
+#endif
     }
     if (source == "nori") {
 #ifdef BIVIDI_HAVE_NORI_SESSION
@@ -275,17 +317,23 @@ int main(int argc, char** argv) {
     std::uint32_t device = 0;
     std::uint32_t mode = 0;
     std::uint32_t timeout_ms = 2000;
+    std::string replay_session;
+    double replay_rate = 1.0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--self-test") return self_test();
         if (arg == "--help") {
-            std::cout << "bividi-viewer [--source synthetic|nori] [--device N] [--mode N] [--timeout-ms N] [--self-test]\n"
+            std::cout << "bividi-viewer [--source synthetic|replay|nori] [--session PATH] [--replay-rate X] [--device N] [--mode N] [--timeout-ms N] [--self-test]\n"
                       << "SPACE pause/resume, T trigger mode, C reconnect/reset, S snapshot, Q/ESC quit\n";
             return 0;
         }
         if (arg == "--source" && i + 1 < argc) {
             source = argv[++i];
+        } else if (arg == "--session" && i + 1 < argc) {
+            replay_session = argv[++i];
+        } else if (arg == "--replay-rate" && i + 1 < argc) {
+            replay_rate = parse_positive_double(argv[++i], "replay rate");
         } else if (arg == "--device" && i + 1 < argc) {
             device = parse_u32(argv[++i], "device index");
         } else if (arg == "--mode" && i + 1 < argc) {
@@ -300,7 +348,7 @@ int main(int argc, char** argv) {
 
     std::unique_ptr<bividi::CaptureSession> session;
     try {
-        session = make_session(source, device, mode, timeout_ms);
+        session = make_session(source, device, mode, timeout_ms, replay_session, replay_rate);
     } catch (const std::exception& error) {
         std::cerr << "bividi-viewer: " << error.what() << '\n';
         return 3;
@@ -323,7 +371,7 @@ int main(int argc, char** argv) {
     while (true) {
         auto state = session->snapshot();
 
-        if (!controls_synced && state.exposure_us > 0) {
+        if (!controls_synced && source != "replay" && state.exposure_us > 0) {
             exposure_trackbar = std::clamp(state.exposure_us, 1, kMaxExposureUs);
             gain_trackbar = std::clamp(state.gain_x10, 0, kMaxGainX10);
             cv::setTrackbarPos("Exposure us", kWindowName, exposure_trackbar);
