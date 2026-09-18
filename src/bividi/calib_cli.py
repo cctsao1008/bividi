@@ -35,6 +35,7 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
     CalibrationCommand("stereo", "solve", "stereo_calibration_workbench.py", ("solve",), "solve mono/stereo calibration"),
     CalibrationCommand("stereo", "validate", "stereo_calibration_workbench.py", ("validate",), "validate a stereo calibration artifact"),
     CalibrationCommand("stereo", "rectify", "stereo_calibration_workbench.py", ("rectify",), "render a rectification inspection view"),
+    CalibrationCommand("stereo", "model-compare", "compare_stereo_camera_models.py", (), "compare pinhole/rational/fisheye model evidence on one session"),
     CalibrationCommand("stereo", "target-scale", "review_calibration_target_scale.py", (), "review measured target print scale"),
     CalibrationCommand("stereo", "geometry-review", "review_stereo_geometry.py", (), "review physical stereo geometry evidence"),
     CalibrationCommand("stereo", "repeatability", "compare_stereo_calibrations.py", (), "compare independent stereo calibrations"),
