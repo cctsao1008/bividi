@@ -16,10 +16,15 @@ function renderStatus(s) {
   $('es').textContent = `${s.exposure_start_us} µs`;
   $('ee').textContent = `${s.exposure_end_us} µs`;
   $('exposure').value = s.exposure_us;
-  $('exposure-value').textContent = `${s.exposure_us} µs`;
+  $('exposure-value').textContent = s.controls_read_only ? 'recorded / unavailable' : `${s.exposure_us} µs`;
   $('gain').value = s.gain_x10;
-  $('gain-value').textContent = `${(s.gain_x10 / 10).toFixed(1)}×`;
+  $('gain-value').textContent = s.controls_read_only ? 'recorded / unavailable' : `${(s.gain_x10 / 10).toFixed(1)}×`;
   $('last-action').textContent = s.last_action;
+
+  const readOnly = Boolean(s.controls_read_only);
+  $('trigger').disabled = readOnly;
+  $('exposure').disabled = readOnly;
+  $('gain').disabled = readOnly;
 }
 
 async function refresh() {
@@ -38,6 +43,7 @@ $('reconnect').addEventListener('click', async () => renderStatus(await api('/ap
 
 let exposureTimer;
 $('exposure').addEventListener('input', (event) => {
+  if (event.target.disabled) return;
   $('exposure-value').textContent = `${event.target.value} µs`;
   clearTimeout(exposureTimer);
   exposureTimer = setTimeout(async () => {
@@ -47,6 +53,7 @@ $('exposure').addEventListener('input', (event) => {
 
 let gainTimer;
 $('gain').addEventListener('input', (event) => {
+  if (event.target.disabled) return;
   $('gain-value').textContent = `${(Number(event.target.value) / 10).toFixed(1)}×`;
   clearTimeout(gainTimer);
   gainTimer = setTimeout(async () => {
