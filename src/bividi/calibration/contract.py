@@ -178,6 +178,17 @@ IMU_AXIS_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
         tool_version=None,
         evaluated_fail_exit=None,
     ),
+    CalibrationCommandContract(
+        group="imu",
+        name="gyro-rotation",
+        module="bividi.calibration.imu_gyro_rotation_command",
+        compatibility_tool="analyze_imu_gyro_rotation.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="candidate-analysis-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
 )
 
 
