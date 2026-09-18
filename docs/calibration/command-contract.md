@@ -1,6 +1,6 @@
 # Calibration command behavior contract
 
-Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issues #89, #91, and #93.
+Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issues #89, #91, #93, and #95.
 
 This document defines the command-level behavior that `bividi-calib` must preserve while implementations move between compatibility scripts and installed package modules. It does **not** define calibration math, artifact schemas, or product/lab thresholds.
 
@@ -14,7 +14,7 @@ This document defines the command-level behavior that `bividi-calib` must preser
 
 `3` is therefore not a parser/runtime error. It means the evaluation itself completed and found failing evidence. Presentation/orchestration/analysis commands that do not own a quality disposition do not manufacture an exit-3 state.
 
-The package-native `imu timing-audit`, `imu stationary`, `imu allan`, and `imu six-position` commands are analysis leaves. They return `0` for a completed analysis and `2` for usage/input/domain failures; they do not currently own a PASS/FAIL evidence disposition and therefore do not use exit `3`.
+The package-native `imu timing-audit`, `imu stationary`, `imu allan`, `imu six-position`, and `imu gyro-rotation` commands are analysis leaves. They return `0` for a completed analysis and `2` for usage/input/domain failures; they do not currently own a PASS/FAIL evidence disposition and therefore do not use exit `3`.
 
 ## Provenance identity
 
@@ -32,7 +32,7 @@ Current frozen identities:
 
 `stereo report` is presentation-only Markdown and does not create a new versioned evidence artifact merely to attach provenance.
 
-The existing `bividi.calibration.camera_imu_timing_audit.v1`, `bividi.calibration.imu_stationary_analysis.v1`, `bividi.calibration.imu_allan_analysis.v1`, and `bividi.calibration.imu_six_position_analysis.v1` reports predate package migration and do not carry a top-level versioned `provenance` object. Package migration preserves those schemas rather than injecting new fields merely to make metadata uniform. The stationary and Allan reports keep explicit conversion provenance under `scale_conversion.source` when operator-supplied SI scales are used.
+The existing `bividi.calibration.camera_imu_timing_audit.v1`, `bividi.calibration.imu_stationary_analysis.v1`, `bividi.calibration.imu_allan_analysis.v1`, `bividi.calibration.imu_six_position_analysis.v1`, and `bividi.calibration.imu_gyro_rotation_analysis.v1` reports predate package migration and do not carry a top-level versioned `provenance` object. Package migration preserves those schemas rather than injecting new fields merely to make metadata uniform. The stationary and Allan reports keep explicit conversion provenance under `scale_conversion.source` when operator-supplied SI scales are used.
 
 ## Policy-source semantics
 
@@ -56,6 +56,9 @@ For package-native IMU analysis leaves:
 - Allan/Kalibr fit outputs remain candidate analysis evidence; they are not automatically promoted into a Bividi calibration artifact.
 - `imu six-position` owns no default pass/fail thresholds for cross-axis coupling, scale spread, pair-center residuals, matrix condition, or pose residuals. Its affine gravity model and signed axis mapping are candidate/sanity evidence.
 - Static gravity can constrain accelerometer axis/sign mapping, but `imu six-position` explicitly does **not** claim to identify gyroscope axis/sign mapping. Controlled rotations remain required for that evidence.
+- `imu gyro-rotation` owns no default pass/fail thresholds for cross-axis coupling, +/- pair symmetry, sensitivity condition, stationary-bias stability, or integrated-angle residuals. Its signed mapping and optional sensitivity matrix remain candidate evidence.
+- Absolute gyroscope sensitivity is produced only when `--expected-angle-deg` is explicitly supplied; no nominal turn angle, sample rate, vendor-demo full-scale, or gyroscope sensitivity is inferred silently.
+- When an accelerometer six-position report is supplied, accelerometer and gyroscope signed mappings are compared. A disagreement is evidence to investigate; neither mapping is silently preferred or auto-corrected.
 
 ## Output roles
 
@@ -73,6 +76,7 @@ The consolidated CLI intentionally does not force all leaves into one output sha
 | `imu stationary` | Markdown stdout + optional machine JSON / Markdown files | Raw-count statistics plus optional explicitly sourced SI conversion; accelerometer stationary mean includes gravity. |
 | `imu allan` | Markdown stdout + optional Allan curve CSV / machine JSON / Markdown files | Streaming Allan/noise analysis. Raw-count curves are always available; SI fits and Kalibr candidates require explicit operator inputs and remain analysis evidence. |
 | `imu six-position` | Markdown stdout + optional pose-summary CSV / machine JSON / Markdown files | Six-pose accelerometer gravity/axis candidate model plus static gyro mean evidence; no gyro axis/sign claim and no automatic promotion. |
+| `imu gyro-rotation` | Markdown stdout + optional run-summary CSV / machine JSON / Markdown files | Controlled-turn gyro axis/sign/symmetry evidence plus optional explicit-angle sensitivity model and accel↔gyro mapping comparison; candidate only. |
 
 Machine-readable evidence and gate artifacts remain authoritative where a gate exists. Human-readable output is a view over the analysis/evidence, and orchestration output describes what should exist rather than proving that the evidence is acceptable.
 
@@ -95,6 +99,8 @@ For `imu allan`, the characterized estimator/report implementation is `bividi.ca
 
 For `imu six-position`, the characterized gravity/axis implementation is `bividi.calibration.imu_six_position`; `bividi.calibration.imu_six_position_command` is likewise a command-only adapter. It does not alter the six-pose convention, affine model, signed-permutation inference, report content, or candidate-only interpretation.
 
+For `imu gyro-rotation`, the characterized controlled-turn implementation is `bividi.calibration.imu_gyro_rotation`; `bividi.calibration.imu_gyro_rotation_command` is likewise command-only. It does not alter device-time trapezoidal integration, signed-permutation inference, optional sensitivity estimation, accelerometer↔gyroscope mapping comparison, report content, or candidate-only interpretation.
+
 ## Frozen package-native set
 
 Stereo:
@@ -115,8 +121,9 @@ IMU noise laboratory:
 
 - `imu allan`
 
-IMU axis/scale sanity laboratory:
+IMU axis/scale sanity laboratories:
 
 - `imu six-position`
+- `imu gyro-rotation`
 
 Heavier OpenCV workbench commands and the remaining IMU/camera↔IMU leaves can adopt this contract incrementally after their existing behavior is characterized. They should not be normalized by changing measurement or evidence semantics merely to make the table look uniform.
