@@ -16,6 +16,7 @@ _MIGRATED_STEREO_MODULES = {
     "geometry-review": "bividi.calibration.stereo_geometry",
     "repeatability": "bividi.calibration.stereo_repeatability",
     "report": "bividi.calibration.stereo_report",
+    "campaign": "bividi.calibration.stereo_campaign",
 }
 
 
