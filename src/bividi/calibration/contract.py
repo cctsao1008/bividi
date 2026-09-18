@@ -29,6 +29,7 @@ PolicyRole = Literal[
     "analysis-parameter-no-acceptance-gate",
     "explicit-scale-source-no-acceptance-gate",
     "explicit-analysis-parameters-no-acceptance-gate",
+    "candidate-analysis-no-acceptance-gate",
 ]
 
 
@@ -163,8 +164,28 @@ IMU_NOISE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+# Package-native axis/scale sanity laboratories. These produce candidate evidence
+# but do not own promotion or product acceptance thresholds.
+IMU_AXIS_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="imu",
+        name="six-position",
+        module="bividi.calibration.imu_six_position_command",
+        compatibility_tool="analyze_imu_six_position.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="candidate-analysis-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    STEREO_COMMAND_CONTRACTS + IMU_COMMAND_CONTRACTS + IMU_NOISE_COMMAND_CONTRACTS
+    STEREO_COMMAND_CONTRACTS
+    + IMU_COMMAND_CONTRACTS
+    + IMU_NOISE_COMMAND_CONTRACTS
+    + IMU_AXIS_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
