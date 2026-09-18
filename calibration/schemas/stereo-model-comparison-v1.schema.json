@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bividi stereo camera-model comparison v1",
+  "type": "object",
+  "required": ["schema", "provenance", "session", "target", "device", "capture", "metric_contract", "candidates", "selection", "guardrails"],
+  "properties": {
+    "schema": {"const": "bividi.calibration.stereo_model_comparison.v1"},
+    "created_utc": {"type": "string"},
+    "provenance": {
+      "type": "object",
+      "required": ["tool", "tool_version", "opencv_version"],
+      "properties": {
+        "tool": {"type": "string", "minLength": 1},
+        "tool_version": {"type": "string", "minLength": 1},
+        "opencv_version": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "session": {
+      "type": "object",
+      "required": ["path", "sha256", "session_id", "provenance_kind"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "session_id": {"type": ["string", "null"]},
+        "provenance_kind": {"enum": ["synthetic", "measured", "imported", null]}
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": ["path", "sha256", "target_id", "family"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "target_id": {"type": ["string", "null"]},
+        "family": {"enum": ["charuco", "aprilgrid", null]}
+      },
+      "additionalProperties": false
+    },
+    "device": {"type": ["object", "null"]},
+    "capture": {"type": ["object", "null"]},
+    "metric_contract": {"type": "object"},
+    "candidates": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/candidate"}
+    },
+    "selection": {
+      "type": "object",
+      "required": ["status", "selected_model", "policy_source", "automatic_ranking"],
+      "properties": {
+        "status": {"enum": ["INSUFFICIENT_EVIDENCE_NO_SELECTION_POLICY", "SELECTED_BY_EXPLICIT_POLICY"]},
+        "selected_model": {"type": ["string", "null"]},
+        "policy_source": {"type": ["string", "null"]},
+        "automatic_ranking": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "guardrails": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  },
+  "$defs": {
+    "distribution": {
+      "type": "object",
+      "required": ["count", "min", "max", "mean", "median", "p95"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1},
+        "min": {"type": "number", "minimum": 0},
+        "max": {"type": "number", "minimum": 0},
+        "mean": {"type": "number", "minimum": 0},
+        "median": {"type": "number", "minimum": 0},
+        "p95": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "camera": {
+      "type": "object",
+      "required": ["K", "D", "mono_rms_px", "per_view_reprojection_rms_px", "outer_image_quartile_reprojection_px", "valid_rectification_map_fraction"],
+      "properties": {
+        "K": {"type": "array", "minItems": 3, "maxItems": 3},
+        "D": {"type": "array", "minItems": 4, "items": {"type": "number"}},
+        "mono_rms_px": {"type": "number", "minimum": 0},
+        "per_view_reprojection_rms_px": {"type": "array", "minItems": 1, "items": {"type": "number", "minimum": 0}},
+        "outer_image_quartile_reprojection_px": {"$ref": "#/$defs/distribution"},
+        "valid_rectification_map_fraction": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["model", "projection", "distortion_parameter_count", "cameras", "stereo", "rectification"],
+      "properties": {
+        "model": {"enum": ["opencv5", "opencv-rational", "opencv-fisheye4"]},
+        "projection": {"enum": ["pinhole", "fisheye"]},
+        "distortion_parameter_count": {"type": "integer", "minimum": 4},
+        "cameras": {
+          "type": "object",
+          "required": ["camera_a", "camera_b"],
+          "properties": {
+            "camera_a": {"$ref": "#/$defs/camera"},
+            "camera_b": {"$ref": "#/$defs/camera"}
+          },
+          "additionalProperties": false
+        },
+        "stereo": {
+          "type": "object",
+          "required": ["rms_px", "R_camera_b_from_camera_a", "T_camera_b_from_camera_a_m", "baseline_m", "valid_pair_count"],
+          "properties": {
+            "rms_px": {"type": "number", "minimum": 0},
+            "R_camera_b_from_camera_a": {"type": "array", "minItems": 3, "maxItems": 3},
+            "T_camera_b_from_camera_a_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+            "baseline_m": {"type": "number", "exclusiveMinimum": 0},
+            "valid_pair_count": {"type": "integer", "minimum": 3}
+          },
+          "additionalProperties": false
+        },
+        "rectification": {
+          "type": "object",
+          "required": ["vertical_epipolar_abs_px", "valid_map_fraction_camera_a", "valid_map_fraction_camera_b"],
+          "properties": {
+            "vertical_epipolar_abs_px": {"$ref": "#/$defs/distribution"},
+            "valid_map_fraction_camera_a": {"type": "number", "minimum": 0, "maximum": 1},
+            "valid_map_fraction_camera_b": {"type": "number", "minimum": 0, "maximum": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
