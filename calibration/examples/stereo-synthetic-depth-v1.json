@@ -124,6 +124,6 @@
   "quality": {
     "status": "EVIDENCE_ONLY_NO_THRESHOLDS",
     "gates": {},
-    "policy_source": null
+    "policy_source": "synthetic runtime regression fixture; no physical thresholds"
   }
 }
