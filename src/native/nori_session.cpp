@@ -1,4 +1,5 @@
 #include "bividi/nori_session.hpp"
+#include "bividi/decxin_observation.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -108,10 +109,49 @@ std::string source_id(const StreamConfig& config) {
     return out.str();
 }
 
+SensorCapabilities make_observation_capabilities() {
+    SensorCapabilities caps{};
+    caps.cameras = {
+        {
+            "camera_a",
+            "primary",
+            PixelFormat::bgr24,
+            CameraModality::unknown,
+            static_cast<std::uint32_t>(decxin::kCameraWidth),
+            static_cast<std::uint32_t>(decxin::kTransportHeight),
+        },
+        {
+            "camera_b",
+            "primary",
+            PixelFormat::bgr24,
+            CameraModality::unknown,
+            static_cast<std::uint32_t>(decxin::kCameraWidth),
+            static_cast<std::uint32_t>(decxin::kTransportHeight),
+        },
+    };
+    caps.stereo_pairs = {{"stereo0", "camera_a", "camera_b"}};
+    caps.imu = true;
+    caps.audio = false;
+    caps.timing.host_receive_monotonic = true;
+    caps.timing.device_frame_time = false;
+    caps.timing.exposure_start_end = true;
+    caps.timing.imu_sample_time = true;
+    // The device carries common embedded timing metadata, but no runtime
+    // measurement in this adapter establishes a synchronization bound.
+    caps.timing.hardware_sync = false;
+    return caps;
+}
+
 }  // namespace
 
 struct NoriCaptureSession::Impl {
-    explicit Impl(NoriSessionConfig session_config) : config(std::move(session_config)) {
+    explicit Impl(NoriSessionConfig session_config)
+        : config(std::move(session_config)),
+          capabilities(make_observation_capabilities()) {
+        const auto conformance = validate_capabilities(capabilities);
+        if (!conformance.ok) {
+            throw std::invalid_argument("internal Nori normalized capabilities are invalid");
+        }
         state.capture.state = CaptureState::idle;
         state.source_id = source_id(config.stream);
         state.last_action = "Nori session starting";
@@ -133,6 +173,7 @@ struct NoriCaptureSession::Impl {
         state.fps = 0.0;
         state.last_action = message;
         latest_preview = {};
+        latest_normalized_observation = {};
     }
 
     void publish_connection(Stream& stream) {
@@ -146,6 +187,13 @@ struct NoriCaptureSession::Impl {
         try { gain_x10 = static_cast<int>(stream.gain_info().current * 10u); } catch (...) {}
 
         std::lock_guard<std::mutex> lock(mutex);
+        if (have_connected_before) {
+            ++continuity_epoch;
+        } else {
+            have_connected_before = true;
+        }
+        next_observation_reinitialized = true;
+
         state.capture = {};
         state.capture.state = desired_running ? CaptureState::running : CaptureState::paused;
         state.fps = 0.0;
@@ -159,6 +207,7 @@ struct NoriCaptureSession::Impl {
         state.source_id = source_id(config.stream);
         state.last_action = "Nori stream connected";
         latest_preview = {};
+        latest_normalized_observation = {};
         have_last_sequence = false;
         last_sequence = 0;
         fps_window_frames = 0;
@@ -231,6 +280,22 @@ struct NoriCaptureSession::Impl {
 
         const auto now = Clock::now();
         std::lock_guard<std::mutex> lock(mutex);
+
+        decxin::ObservationContext context{};
+        context.source_id = source_id(config.stream);
+        context.evidence = config.evidence;
+        context.continuity_epoch = continuity_epoch;
+        context.continuity = next_observation_reinitialized
+            ? ContinuityState::reinitialized
+            : ContinuityState::continuous;
+        context.calibration = config.calibration;
+        context.configuration_revision = config.configuration_revision;
+        auto normalized = decxin::to_sensor_observation(capture.decoded, context);
+        const auto conformance = validate_observation(normalized, &capabilities);
+        if (!conformance.ok) {
+            throw Error("Nori normalized observation violated the #11 contract");
+        }
+
         track_sequence(state.capture, preview.sequence, have_last_sequence, last_sequence);
         ++state.capture.frames;
         ++fps_window_frames;
@@ -243,6 +308,8 @@ struct NoriCaptureSession::Impl {
         state.exposure_end_us = preview.exposure_end_us;
         if (preview.imu_rate_hz != 0) state.imu_rate_hz = preview.imu_rate_hz;
         latest_preview = std::move(preview);
+        latest_normalized_observation = std::move(normalized);
+        next_observation_reinitialized = false;
 
         const auto elapsed = std::chrono::duration<double>(now - fps_window_start).count();
         if (elapsed >= 0.5) {
@@ -282,6 +349,7 @@ struct NoriCaptureSession::Impl {
                     state.fps = 0.0;
                     state.last_action = stream ? "reconnecting Nori stream" : "connecting Nori stream";
                     latest_preview = {};
+                    latest_normalized_observation = {};
                 }
             }
 
@@ -369,10 +437,12 @@ struct NoriCaptureSession::Impl {
     }
 
     NoriSessionConfig config{};
+    const SensorCapabilities capabilities;
     mutable std::mutex mutex;
     std::condition_variable wake;
     SessionStatus state{};
     StereoPreviewFrame latest_preview{};
+    SensorObservation latest_normalized_observation{};
     bool stop = false;
     bool desired_running = true;
     bool reconnect_requested = true;
@@ -381,6 +451,9 @@ struct NoriCaptureSession::Impl {
     std::optional<TriggerMode> pending_trigger_mode;
     bool have_last_sequence = false;
     std::uint64_t last_sequence = 0;
+    std::uint64_t continuity_epoch = 0;
+    bool have_connected_before = false;
+    bool next_observation_reinitialized = true;
     Clock::time_point fps_window_start = Clock::now();
     std::uint64_t fps_window_frames = 0;
     std::thread worker;
@@ -400,6 +473,17 @@ bool NoriCaptureSession::latest_stereo_preview(StereoPreviewFrame& out) const {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     out = impl_->latest_preview;
     return out.valid();
+}
+
+const SensorCapabilities& NoriCaptureSession::observation_capabilities() const noexcept {
+    return impl_->capabilities;
+}
+
+bool NoriCaptureSession::latest_observation(SensorObservation& out) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->latest_normalized_observation.cameras.empty()) return false;
+    out = impl_->latest_normalized_observation;
+    return true;
 }
 
 bool NoriCaptureSession::toggle_capture() {

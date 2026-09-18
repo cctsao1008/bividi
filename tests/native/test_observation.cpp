@@ -1,12 +1,19 @@
 #include "bividi/decxin_observation.hpp"
+#include "bividi/nori_session.hpp"
 #include "bividi/observation.hpp"
+#include "bividi/observation_source.hpp"
 
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <type_traits>
 #include <vector>
 
 namespace {
+
+static_assert(
+    std::is_base_of_v<bividi::ObservationSnapshotSource, bividi::nori::NoriCaptureSession>,
+    "live Nori session must expose the normalized observation snapshot boundary");
 
 bividi::SensorCapabilities stereo_imu_capabilities() {
     bividi::SensorCapabilities caps{};
@@ -24,6 +31,15 @@ bividi::SensorCapabilities stereo_imu_capabilities() {
     caps.timing.imu_sample_time = true;
     caps.trigger_modes = {bividi::TriggerMode::free_run, bividi::TriggerMode::software};
     return caps;
+}
+
+void test_nori_normalized_source_defaults_do_not_claim_sync_or_calibration() {
+    bividi::nori::NoriSessionConfig config{};
+    assert(config.evidence == bividi::EvidenceKind::measured);
+    assert(config.calibration.stereo.empty());
+    assert(config.calibration.imu.empty());
+    assert(config.calibration.camera_imu.empty());
+    assert(config.configuration_revision.empty());
 }
 
 void test_capability_validation() {
@@ -213,6 +229,7 @@ void test_declared_device_frame_time_must_be_present() {
 }  // namespace
 
 int main() {
+    test_nori_normalized_source_defaults_do_not_claim_sync_or_calibration();
     test_capability_validation();
     test_clock_domains_remain_distinct();
     test_decxin_normalization();

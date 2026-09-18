@@ -15,6 +15,9 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+      - name: Nori live session public-boundary compile check
+        if: runner.os == 'Linux'
+        run: c++ -std=c++17 -Iinclude -fsyntax-only src/native/nori_session.cpp
       - name: Install Python package
         run: python -m pip install -e ".[mcap]"
       - name: Python package unit tests
