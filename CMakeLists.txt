@@ -110,6 +110,7 @@ if(BIVIDI_WITH_OPENCV)
         add_library(bividi_replay STATIC
             src/native/replay_opencv.cpp
             src/native/replay_interceptor.cpp
+            src/native/replay_faults.cpp
             src/native/replay_session.cpp
         )
         target_include_directories(bividi_replay PUBLIC include ${OpenCV_INCLUDE_DIRS})
@@ -250,6 +251,10 @@ if(BIVIDI_BUILD_TESTS)
         add_executable(bividi_replay_tests tests/native/test_replay.cpp)
         target_link_libraries(bividi_replay_tests PRIVATE bividi_replay)
         add_test(NAME bividi_replay_tests COMMAND bividi_replay_tests)
+
+        add_executable(bividi_replay_fault_tests tests/native/test_replay_faults.cpp)
+        target_link_libraries(bividi_replay_fault_tests PRIVATE bividi_replay)
+        add_test(NAME bividi_replay_fault_tests COMMAND bividi_replay_fault_tests)
     endif()
 
     if(TARGET bividi_nori_opencv)
