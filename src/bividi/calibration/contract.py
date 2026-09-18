@@ -33,6 +33,7 @@ PolicyRole = Literal[
     "explicit-analysis-parameters-no-acceptance-gate",
     "candidate-analysis-no-acceptance-gate",
     "explicit-operator-gates-no-default-thresholds",
+    "explicit-operator-gates-with-structural-fail-no-default-thresholds",
     "structural-provenance-gate-no-numerical-policy",
     "measured-fields-required-synthetic-opt-in",
     "measured-evidence-required-synthetic-opt-in",
@@ -57,201 +58,57 @@ class CalibrationCommandContract:
 
 
 STEREO_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    CalibrationCommandContract(
-        group="stereo",
-        name="target-scale",
-        module="bividi.calibration.target_scale",
-        compatibility_tool="review_calibration_target_scale.py",
-        output_role="machine-evidence-json",
-        policy_role="named-source-required-for-explicit-gates",
-        emits_versioned_provenance=True,
-        tool_version="1",
-        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
-    ),
-    CalibrationCommandContract(
-        group="stereo",
-        name="geometry-review",
-        module="bividi.calibration.stereo_geometry",
-        compatibility_tool="review_stereo_geometry.py",
-        output_role="machine-evidence-json",
-        policy_role="named-source-required-for-explicit-gates",
-        emits_versioned_provenance=True,
-        tool_version="1",
-        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
-    ),
-    CalibrationCommandContract(
-        group="stereo",
-        name="repeatability",
-        module="bividi.calibration.stereo_repeatability",
-        compatibility_tool="compare_stereo_calibrations.py",
-        output_role="machine-evidence-json",
-        policy_role="named-source-required-for-explicit-gates",
-        emits_versioned_provenance=True,
-        tool_version="1",
-        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
-    ),
-    CalibrationCommandContract(
-        group="stereo",
-        name="promote",
-        module="bividi.calibration.stereo_provenance",
-        compatibility_tool="stereo_calibration_provenance.py",
-        output_role="machine-evidence-json",
-        policy_role="promotion-requires-manifest-and-evidence-policy",
-        emits_versioned_provenance=True,
-        tool_version="1",
-        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
-    ),
-    CalibrationCommandContract(
-        group="stereo",
-        name="report",
-        module="bividi.calibration.stereo_report",
-        compatibility_tool="render_stereo_calibration_report.py",
-        output_role="human-report-markdown",
-        policy_role="presentation-only",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=None,
-    ),
-    CalibrationCommandContract(
-        group="stereo",
-        name="campaign",
-        module="bividi.calibration.stereo_campaign",
-        compatibility_tool="plan_stereo_calibration_campaign.py",
-        output_role="orchestration-json-markdown",
-        policy_role="recorded-orchestration-metadata",
-        emits_versioned_provenance=True,
-        tool_version="1",
-        evaluated_fail_exit=None,
-    ),
+    CalibrationCommandContract(group="stereo", name="target-scale", module="bividi.calibration.target_scale", compatibility_tool="review_calibration_target_scale.py", output_role="machine-evidence-json", policy_role="named-source-required-for-explicit-gates", emits_versioned_provenance=True, tool_version="1", evaluated_fail_exit=EXIT_EVALUATED_FAIL),
+    CalibrationCommandContract(group="stereo", name="geometry-review", module="bividi.calibration.stereo_geometry", compatibility_tool="review_stereo_geometry.py", output_role="machine-evidence-json", policy_role="named-source-required-for-explicit-gates", emits_versioned_provenance=True, tool_version="1", evaluated_fail_exit=EXIT_EVALUATED_FAIL),
+    CalibrationCommandContract(group="stereo", name="repeatability", module="bividi.calibration.stereo_repeatability", compatibility_tool="compare_stereo_calibrations.py", output_role="machine-evidence-json", policy_role="named-source-required-for-explicit-gates", emits_versioned_provenance=True, tool_version="1", evaluated_fail_exit=EXIT_EVALUATED_FAIL),
+    CalibrationCommandContract(group="stereo", name="promote", module="bividi.calibration.stereo_provenance", compatibility_tool="stereo_calibration_provenance.py", output_role="machine-evidence-json", policy_role="promotion-requires-manifest-and-evidence-policy", emits_versioned_provenance=True, tool_version="1", evaluated_fail_exit=EXIT_EVALUATED_FAIL),
+    CalibrationCommandContract(group="stereo", name="report", module="bividi.calibration.stereo_report", compatibility_tool="render_stereo_calibration_report.py", output_role="human-report-markdown", policy_role="presentation-only", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=None),
+    CalibrationCommandContract(group="stereo", name="campaign", module="bividi.calibration.stereo_campaign", compatibility_tool="plan_stereo_calibration_campaign.py", output_role="orchestration-json-markdown", policy_role="recorded-orchestration-metadata", emits_versioned_provenance=True, tool_version="1", evaluated_fail_exit=None),
 )
-
 
 IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    CalibrationCommandContract(
-        group="imu",
-        name="timing-audit",
-        module="bividi.calibration.imu_timing",
-        compatibility_tool="audit_imu_timing.py",
-        output_role="machine-evidence-json-and-human-markdown",
-        policy_role="analysis-parameter-no-acceptance-gate",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=None,
-    ),
-    CalibrationCommandContract(
-        group="imu",
-        name="stationary",
-        module="bividi.calibration.imu_stationary",
-        compatibility_tool="analyze_imu_stationary.py",
-        output_role="machine-evidence-json-and-human-markdown",
-        policy_role="explicit-scale-source-no-acceptance-gate",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=None,
-    ),
+    CalibrationCommandContract(group="imu", name="timing-audit", module="bividi.calibration.imu_timing", compatibility_tool="audit_imu_timing.py", output_role="machine-evidence-json-and-human-markdown", policy_role="analysis-parameter-no-acceptance-gate", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=None),
+    CalibrationCommandContract(group="imu", name="stationary", module="bividi.calibration.imu_stationary", compatibility_tool="analyze_imu_stationary.py", output_role="machine-evidence-json-and-human-markdown", policy_role="explicit-scale-source-no-acceptance-gate", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=None),
 )
-
 
 IMU_NOISE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    CalibrationCommandContract(
-        group="imu",
-        name="allan",
-        module="bividi.calibration.imu_allan_command",
-        compatibility_tool="analyze_imu_allan.py",
-        output_role="machine-evidence-json-and-human-markdown",
-        policy_role="explicit-analysis-parameters-no-acceptance-gate",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=None,
-    ),
+    CalibrationCommandContract(group="imu", name="allan", module="bividi.calibration.imu_allan_command", compatibility_tool="analyze_imu_allan.py", output_role="machine-evidence-json-and-human-markdown", policy_role="explicit-analysis-parameters-no-acceptance-gate", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=None),
 )
-
 
 IMU_AXIS_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    CalibrationCommandContract(
-        group="imu",
-        name="six-position",
-        module="bividi.calibration.imu_six_position_command",
-        compatibility_tool="analyze_imu_six_position.py",
-        output_role="machine-evidence-json-and-human-markdown",
-        policy_role="candidate-analysis-no-acceptance-gate",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=None,
-    ),
-    CalibrationCommandContract(
-        group="imu",
-        name="gyro-rotation",
-        module="bividi.calibration.imu_gyro_rotation_command",
-        compatibility_tool="analyze_imu_gyro_rotation.py",
-        output_role="machine-evidence-json-and-human-markdown",
-        policy_role="candidate-analysis-no-acceptance-gate",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=None,
-    ),
+    CalibrationCommandContract(group="imu", name="six-position", module="bividi.calibration.imu_six_position_command", compatibility_tool="analyze_imu_six_position.py", output_role="machine-evidence-json-and-human-markdown", policy_role="candidate-analysis-no-acceptance-gate", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=None),
+    CalibrationCommandContract(group="imu", name="gyro-rotation", module="bividi.calibration.imu_gyro_rotation_command", compatibility_tool="analyze_imu_gyro_rotation.py", output_role="machine-evidence-json-and-human-markdown", policy_role="candidate-analysis-no-acceptance-gate", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=None),
 )
-
 
 IMU_CONFIG_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    CalibrationCommandContract(
-        group="imu",
-        name="config-consistency",
-        module="bividi.calibration.imu_config_consistency_command",
-        compatibility_tool="analyze_imu_config_consistency.py",
-        output_role="machine-evidence-json-and-human-markdown",
-        policy_role="explicit-operator-gates-no-default-thresholds",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
-    ),
+    CalibrationCommandContract(group="imu", name="config-consistency", module="bividi.calibration.imu_config_consistency_command", compatibility_tool="analyze_imu_config_consistency.py", output_role="machine-evidence-json-and-human-markdown", policy_role="explicit-operator-gates-no-default-thresholds", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=EXIT_EVALUATED_FAIL),
 )
-
 
 IMU_PROVENANCE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(group="imu", name="provenance", module="bividi.calibration.imu_provenance_command", compatibility_tool="imu_calibration_provenance.py", output_role="machine-evidence-json", policy_role="structural-provenance-gate-no-numerical-policy", emits_versioned_provenance=True, tool_version="1", evaluated_fail_exit=EXIT_EVALUATED_FAIL),
+)
+
+IMU_INTEROP_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(group="imu", name="export-kalibr", module="bividi.calibration.kalibr_imu_export_command", compatibility_tool="export_kalibr_imu.py", output_role="interop-yaml-and-machine-manifest", policy_role="measured-fields-required-synthetic-opt-in", emits_versioned_provenance=False, tool_version=None, evaluated_fail_exit=None),
+)
+
+CAMERA_IMU_STAGING_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(group="camera-imu", name="prepare", module="bividi.calibration.kalibr_dynamic_session_command", compatibility_tool="prepare_kalibr_dynamic_session.py", output_role="staging-bundle-and-machine-manifest", policy_role="measured-evidence-required-synthetic-opt-in", emits_versioned_provenance=True, tool_version="1", evaluated_fail_exit=None),
+)
+
+CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
-        group="imu",
-        name="provenance",
-        module="bividi.calibration.imu_provenance_command",
-        compatibility_tool="imu_calibration_provenance.py",
-        output_role="machine-evidence-json",
-        policy_role="structural-provenance-gate-no-numerical-policy",
+        group="camera-imu",
+        name="excitation",
+        module="bividi.calibration.camera_imu_excitation_command",
+        compatibility_tool="analyze_camera_imu_excitation.py",
+        output_role="machine-evidence-json-and-human-markdown",
+        policy_role="explicit-operator-gates-with-structural-fail-no-default-thresholds",
         emits_versioned_provenance=True,
         tool_version="1",
         evaluated_fail_exit=EXIT_EVALUATED_FAIL,
     ),
 )
-
-
-IMU_INTEROP_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    CalibrationCommandContract(
-        group="imu",
-        name="export-kalibr",
-        module="bividi.calibration.kalibr_imu_export_command",
-        compatibility_tool="export_kalibr_imu.py",
-        output_role="interop-yaml-and-machine-manifest",
-        policy_role="measured-fields-required-synthetic-opt-in",
-        emits_versioned_provenance=False,
-        tool_version=None,
-        evaluated_fail_exit=None,
-    ),
-)
-
-
-CAMERA_IMU_STAGING_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    CalibrationCommandContract(
-        group="camera-imu",
-        name="prepare",
-        module="bividi.calibration.kalibr_dynamic_session_command",
-        compatibility_tool="prepare_kalibr_dynamic_session.py",
-        output_role="staging-bundle-and-machine-manifest",
-        policy_role="measured-evidence-required-synthetic-opt-in",
-        emits_versioned_provenance=True,
-        tool_version="1",
-        evaluated_fail_exit=None,
-    ),
-)
-
 
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
@@ -262,6 +119,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + IMU_PROVENANCE_COMMAND_CONTRACTS
     + IMU_INTEROP_COMMAND_CONTRACTS
     + CAMERA_IMU_STAGING_COMMAND_CONTRACTS
+    + CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
