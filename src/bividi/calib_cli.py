@@ -1,10 +1,10 @@
 """Discoverable calibration CLI over installed and compatibility implementations.
 
-Issue #60 migrates reusable calibration/evidence implementations from the
-source-tree ``tools/`` compatibility surface into installed package modules
-incrementally. Commands already migrated execute from the installed package;
-remaining commands continue to delegate to the existing source-tree tools
-without copying their algorithms into a parallel implementation.
+Reusable calibration/evidence implementations move from the source-tree
+``tools/`` compatibility surface into installed package modules incrementally.
+Commands already migrated execute from the installed package; remaining commands
+continue to delegate to the existing source-tree tools without copying their
+algorithms into a parallel implementation.
 """
 
 from __future__ import annotations
@@ -88,8 +88,20 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
     ),
 
     # IMU / #47
-    CalibrationCommand("imu", "timing-audit", "audit_imu_timing.py", (), "audit device-time cadence and camera/IMU timing"),
-    CalibrationCommand("imu", "stationary", "analyze_imu_stationary.py", (), "analyze stationary bias/statistics"),
+    CalibrationCommand(
+        "imu",
+        "timing-audit",
+        None,
+        summary="audit device-time cadence and camera/IMU timing",
+        module="bividi.calibration.imu_timing",
+    ),
+    CalibrationCommand(
+        "imu",
+        "stationary",
+        None,
+        summary="analyze stationary bias/statistics",
+        module="bividi.calibration.imu_stationary",
+    ),
     CalibrationCommand("imu", "allan", "analyze_imu_allan.py", (), "analyze Allan deviation/noise evidence"),
     CalibrationCommand("imu", "six-position", "analyze_imu_six_position.py", (), "analyze six-position accelerometer evidence"),
     CalibrationCommand("imu", "gyro-rotation", "analyze_imu_gyro_rotation.py", (), "analyze controlled gyro rotations"),
@@ -138,7 +150,7 @@ def find_source_root(explicit: str | Path | None = None) -> Path:
 
     Installed package modules do not use this lookup. Explicit ``--source-root``
     and ``BIVIDI_SOURCE_ROOT`` keep the remaining compatibility dispatches
-    deterministic while Issue #60 migrates implementations incrementally.
+    deterministic while implementations migrate incrementally.
     """
 
     candidates: list[Path] = []
