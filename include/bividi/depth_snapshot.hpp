@@ -5,9 +5,12 @@
 
 #include <opencv2/core.hpp>
 
+#include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <mutex>
 #include <string>
+#include <utility>
 
 namespace bividi::depth {
 
@@ -88,7 +91,7 @@ public:
         return true;
     }
 
-    void reset() noexcept {
+    void reset() {
         std::lock_guard<std::mutex> lock(mutex_);
         processor_.reset();
         cached_observation_ = {};
