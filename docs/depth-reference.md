@@ -1,6 +1,6 @@
 # Deterministic Stereo Depth Reference
 
-Status: first hardware-independent implementation slice for Issue #9. The module is an optional OpenCV/calib3d downstream consumer; it is not part of `bividi_core` and does not establish physical AR0234 depth accuracy.
+Status: hardware-independent numerical kernel plus normalized `SensorObservation` adapter for Issue #9. The module is an optional OpenCV/calib3d downstream consumer; it is not part of `bividi_core` and does not establish physical AR0234 depth accuracy.
 
 ## Purpose
 
@@ -40,7 +40,7 @@ bividi_depth   [optional OpenCV geometry consumer]
 
 Acquisition, replay, #11 observation types, and vendor/device backends remain usable without the depth target.
 
-The public header is `include/bividi/depth.hpp`; OpenCV types are allowed there because this is explicitly an OpenCV-dependent downstream module rather than a core domain contract.
+The numerical public header is `include/bividi/depth.hpp`. The normalized observation adapter is `include/bividi/depth_observation.hpp`. OpenCV types are allowed at this boundary because depth is explicitly an OpenCV-dependent downstream module rather than a core domain contract.
 
 ## Calibration contract
 
@@ -133,7 +133,55 @@ Y = (v - cy) * Z / fy
 Z = fx * B / d
 ```
 
-The coordinate frame is carried explicitly as `camera_a_rectified` in this first slice; later observation integration must bind this to the corresponding calibration/source identity rather than infer physical `left/right` labels.
+The coordinate frame is carried explicitly as `camera_a_rectified` in this first slice; later physical integration must bind this to the corresponding calibration/source identity rather than infer physical `left/right` labels.
+
+## Normalized `SensorObservation` adapter
+
+`StereoDepthObservationProcessor` is the explicit bridge from the #11 normalized observation contract to the numerical depth kernel:
+
+```text
+SensorCapabilities + selected StereoPairInfo
+                  +
+SensorObservation
+                  +
+selected #8 StereoDepthCalibration
+                  ↓
+StereoDepthObservationProcessor
+                  ↓
+processed depth result
+        or
+explicit rejection with no depth matrices
+```
+
+The adapter does not alter acquisition data and does not manufacture repaired observations. It selects the two streams from the declared `StereoPairInfo` ordering and requires the corresponding camera observations to be fully valid/usable.
+
+Current per-observation gates include:
+
+- source must be `available`;
+- observation must not be invalid;
+- the selected stereo pair must have a status entry;
+- `unsynchronized` and `degraded` stereo status are rejected;
+- `unknown` synchronization may be allowed by policy for replay/synthetic evidence, but remains `unknown` in the result and is never upgraded to synchronized;
+- both selected camera observations must exist and be fully valid/leased;
+- if the observation carries a stereo calibration ID, it must equal the selected calibration artifact ID;
+- deployments may additionally require that every observation explicitly carries that calibration ID.
+
+A rejection returns empty disparity/depth/XYZ matrices. This is the central no-fake-depth rule at the normalized observation boundary.
+
+### Derived-stream continuity
+
+StereoSGBM itself is per-frame, but the adapter still keeps derived-stream chronology explicit so later recorder/temporal consumers cannot mistake a discontinuous result sequence for continuous geometry.
+
+The adapter:
+
+- records a reset generation;
+- resets chronology at `reinitialized` / `discontinuity` boundaries or continuity-epoch changes;
+- rejects duplicate/backward sequence numbers within one continuous epoch;
+- treats a forward sequence gap as a reset boundary by default;
+- schedules a fresh generation after a rejected usable-frame fault such as a missing camera;
+- preserves source ID, evidence kind, sequence, continuity epoch/state, pair ID, synchronization state, and calibration ID in the adapter result.
+
+This reset is deliberately adapter/derived-stream state. It does not claim that the stateless numerical `StereoSGBM` kernel itself has hidden temporal state.
 
 ## Deterministic test geometry
 
@@ -155,27 +203,43 @@ The texture is deterministic and camera B samples the same virtual plane at the 
 4. identity rectification → StereoSGBM → median disparity near 4 px;
 5. resulting median depth near 2 m;
 6. rejection of inconsistent calibration/configuration/input geometry;
-7. display-preview separation from numeric results.
+7. display-preview separation from numeric results;
+8. normalized stereo-pair selection and synthetic provenance preservation;
+9. unknown synchronization preservation without silent promotion;
+10. no depth output for missing camera, unsynchronized pair, or calibration mismatch;
+11. explicit reset generation across rejected frames, sequence gaps, and continuity epochs;
+12. duplicate/backward normalized observation rejection.
 
 These tolerances are algorithmic regression tolerances for the synthetic fixture, not product acceptance thresholds.
 
 ## Next integration slices
 
-The first implementation intentionally stops short of claiming a complete runtime depth product. The high-value next steps are:
+The numerical kernel and normalized observation gate are now separate and explicit. The next high-value integration is to exercise the already generated #58 session through the real replay adapter rather than constructing the normalized observation in the depth unit test:
 
 ```text
 #58 generated session
         ↓
 #31 ReplaySource
         ↓
-#11 SensorObservation stereo-pair selection
+#11 SensorObservation + StereoPairInfo
         ↓
-#9 depth processor
+StereoDepthObservationProcessor
         ↓
-derived depth observation / recorder / UI
+#9 depth / XYZ
 ```
 
-Then use #59 fault recipes to prove that missing camera data, synchronization degradation, sequence discontinuity, and timing faults cause explicit rejection/reset/degraded output rather than silent geometry fabrication.
+Then route #59 deterministic fault recipes through that same end-to-end chain and assert the layer-specific outcome:
+
+```text
+remove camera          → no depth + recovery reset
+unsynchronized pair    → no depth
+sequence duplicate     → reject duplicate derived result
+sequence gap           → explicit reset generation
+continuity epoch       → reset before derived output
+timestamp-only fault   → preserved as timing evidence; no invented sync claim
+```
+
+The adapter's policy intentionally does not turn `unknown` replay synchronization into a physical claim. A stricter live policy can require known-good synchronization once #35 supplies measured evidence.
 
 After physical hardware arrives:
 
@@ -195,6 +259,8 @@ range / error / invalid-rate / latency evidence
 - Nominal/seller FOV or baseline never substitutes for promoted calibration.
 - Camera A/B are not silently renamed physical left/right.
 - Invalid disparity is never converted into a finite fake depth.
+- A rejected normalized observation produces no plausible depth product.
+- `unknown` synchronization stays unknown even when policy permits synthetic/replay processing.
 - Visualization is not numeric geometry.
 - Depth is a derived product and never overwrites raw observation provenance.
 - GPU acceleration is deferred until profiling identifies a justified bottleneck.
