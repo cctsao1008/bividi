@@ -1,5 +1,9 @@
 #include "bividi/session.hpp"
 
+#ifdef BIVIDI_HAVE_REPLAY_SESSION
+#include "bividi/replay_session.hpp"
+#endif
+
 #ifdef BIVIDI_HAVE_NORI_SESSION
 #include "bividi/nori_session.hpp"
 #endif
@@ -88,6 +92,20 @@ std::uint32_t parse_u32(const char* value, const char* name) {
     }
 }
 
+double parse_positive_double(const char* value, const char* name) {
+    try {
+        std::size_t used = 0;
+        const auto parsed = std::stod(value, &used);
+        if (value[used] != '\0' || !(parsed > 0.0) || !std::isfinite(parsed)) {
+            throw std::out_of_range("range");
+        }
+        return parsed;
+    } catch (...) {
+        std::cerr << "invalid " << name << ": " << value << '\n';
+        std::exit(2);
+    }
+}
+
 cv::Mat render_synthetic_camera(const bividi::SessionStatus& state, bool camera_b) {
     cv::Mat image(kPreviewHeight, kPreviewWidth, CV_8UC3, cv::Scalar(27, 30, 35));
     const int disparity = camera_b ? -26 : 26;
@@ -118,7 +136,7 @@ cv::Mat render_synthetic_camera(const bividi::SessionStatus& state, bool camera_
     return image;
 }
 
-cv::Mat render_live_camera(const bividi::ImageView& view, bool camera_b) {
+cv::Mat render_live_camera(const bividi::ImageView& view, bool camera_b, bool replay) {
     if (view.empty() || view.pixel_format != bividi::PixelFormat::bgr24 || view.bytes_per_pixel != 3) {
         return {};
     }
@@ -141,9 +159,11 @@ cv::Mat render_live_camera(const bividi::ImageView& view, bool camera_b) {
     const int x = (kPreviewWidth - width) / 2;
     const int y = (kPreviewHeight - height) / 2;
     resized.copyTo(canvas(cv::Rect(x, y, width, height)));
+    const std::string label = std::string(camera_b ? "Camera B - " : "Camera A - ") +
+                              (replay ? "replay" : "live");
     cv::putText(
         canvas,
-        camera_b ? "Camera B - live" : "Camera A - live",
+        label,
         cv::Point(24, 36),
         cv::FONT_HERSHEY_SIMPLEX,
         0.68,
@@ -157,7 +177,7 @@ cv::Mat render_waiting_camera(const bividi::SessionStatus& state, bool camera_b)
     cv::Mat image(kPreviewHeight, kPreviewWidth, CV_8UC3, cv::Scalar(22, 24, 28));
     cv::putText(
         image,
-        camera_b ? "Camera B - waiting for live frame" : "Camera A - waiting for live frame",
+        camera_b ? "Camera B - waiting for frame" : "Camera A - waiting for frame",
         cv::Point(32, kPreviewHeight / 2 - 10),
         cv::FONT_HERSHEY_SIMPLEX,
         0.60,
@@ -178,9 +198,10 @@ cv::Mat render_waiting_camera(const bividi::SessionStatus& state, bool camera_b)
 
 cv::Mat render_camera(bividi::CaptureSession& session, bool camera_b) {
     const auto state = session.snapshot();
+    const bool replay = state.source_id.rfind("replay:", 0) == 0;
     bividi::StereoPreviewFrame preview;
     if (session.latest_stereo_preview(preview)) {
-        auto image = render_live_camera(camera_b ? preview.camera_b : preview.camera_a, camera_b);
+        auto image = render_live_camera(camera_b ? preview.camera_b : preview.camera_a, camera_b, replay);
         if (!image.empty()) return image;
     }
     if (state.source_id == "synthetic") return render_synthetic_camera(state, camera_b);
@@ -197,6 +218,7 @@ std::vector<unsigned char> encode_jpeg(bividi::CaptureSession& session, bool cam
 }
 
 std::string json_status(const bividi::SessionStatus& s) {
+    const bool replay = s.source_id.rfind("replay:", 0) == 0;
     std::ostringstream out;
     out << "{"
         << "\"source\":\"" << json_escape(s.source_id) << "\","
@@ -210,9 +232,10 @@ std::string json_status(const bividi::SessionStatus& s) {
         << "\"preview_fps\":" << kPreviewFps << ","
         << "\"preview_width\":" << kPreviewWidth << ","
         << "\"preview_height\":" << kPreviewHeight << ","
+        << "\"controls_read_only\":" << (replay ? "true" : "false") << ","
         << "\"exposure_us\":" << s.exposure_us << ","
         << "\"gain_x10\":" << s.gain_x10 << ","
-        << "\"trigger\":\"" << bividi::trigger_mode_name(s.trigger_mode) << "\","
+        << "\"trigger\":\"" << (replay ? "unavailable" : bividi::trigger_mode_name(s.trigger_mode)) << "\","
         << "\"exposure_start_us\":" << s.exposure_start_us << ","
         << "\"exposure_end_us\":" << s.exposure_end_us << ","
         << "\"imu_rate_hz\":" << s.imu_rate_hz << ","
@@ -367,8 +390,11 @@ void handle_client(socket_t client, bividi::CaptureSession& session) {
         session.toggle_capture();
         send_response(client, 200, "OK", "application/json", json_status(session.snapshot()));
     } else if (method == "POST" && route == "/api/trigger/cycle") {
-        session.cycle_trigger();
-        send_response(client, 200, "OK", "application/json", json_status(session.snapshot()));
+        if (!session.cycle_trigger()) {
+            send_response(client, 400, "Bad Request", "text/plain", "trigger control unavailable");
+        } else {
+            send_response(client, 200, "OK", "application/json", json_status(session.snapshot()));
+        }
     } else if (method == "POST" && route == "/api/reconnect") {
         session.reconnect();
         send_response(client, 200, "OK", "application/json", json_status(session.snapshot()));
@@ -409,9 +435,24 @@ std::unique_ptr<bividi::CaptureSession> make_session(
     const std::string& source,
     std::uint32_t device,
     std::uint32_t mode,
-    std::uint32_t timeout_ms) {
+    std::uint32_t timeout_ms,
+    const std::string& replay_session,
+    double replay_rate) {
     if (source == "synthetic") {
         return std::make_unique<bividi::SyntheticCaptureSession>();
+    }
+    if (source == "replay") {
+#ifdef BIVIDI_HAVE_REPLAY_SESSION
+        if (replay_session.empty()) {
+            throw std::runtime_error("replay source requires --session PATH");
+        }
+        bividi::ReplaySessionConfig config{};
+        config.session_dir = replay_session;
+        config.rate = replay_rate;
+        return std::make_unique<bividi::ReplayCaptureSession>(std::move(config));
+#else
+        throw std::runtime_error("Replay source was requested but this build does not include native replay support");
+#endif
     }
     if (source == "nori") {
 #ifdef BIVIDI_HAVE_NORI_SESSION
@@ -434,7 +475,9 @@ int self_test() {
     const auto a = encode_jpeg(session, false);
     const auto b = encode_jpeg(session, true);
     const auto json = json_status(status);
-    if (a.empty() || b.empty() || json.find("\"source\":\"synthetic\"") == std::string::npos) {
+    if (a.empty() || b.empty() ||
+        json.find("\"source\":\"synthetic\"") == std::string::npos ||
+        json.find("\"controls_read_only\":false") == std::string::npos) {
         std::cerr << "bividi-web self-test: render/status failure\n";
         return 1;
     }
@@ -487,10 +530,12 @@ int run_server(
     const std::string& source,
     std::uint32_t device,
     std::uint32_t mode,
-    std::uint32_t timeout_ms) {
+    std::uint32_t timeout_ms,
+    const std::string& replay_session,
+    double replay_rate) {
     std::unique_ptr<bividi::CaptureSession> session;
     try {
-        session = make_session(source, device, mode, timeout_ms);
+        session = make_session(source, device, mode, timeout_ms, replay_session, replay_rate);
     } catch (const std::exception& error) {
         std::cerr << "bividi-web: " << error.what() << '\n';
         return 2;
@@ -535,6 +580,7 @@ int run_server(
     std::cout << "Bividi Web UI: http://" << listen_address << ':' << port << "\n";
     std::cout << "source=" << source << " preview=" << kPreviewWidth << 'x' << kPreviewHeight << '@' << kPreviewFps << "fps";
     if (source == "nori") std::cout << " device=" << device << " mode=" << mode;
+    if (source == "replay") std::cout << " session=" << replay_session << " rate=" << replay_rate << 'x';
     std::cout << '\n';
     if (!is_loopback(listen_address)) {
         std::cout << "WARNING: non-loopback bind exposes the engineering control surface to the network.\n";
@@ -562,12 +608,14 @@ int main(int argc, char** argv) {
     std::uint32_t device = 0;
     std::uint32_t mode = 0;
     std::uint32_t timeout_ms = 2000;
+    std::string replay_session;
+    double replay_rate = 1.0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--self-test") return self_test();
         if (arg == "--help") {
-            std::cout << "bividi-web [--listen 127.0.0.1] [--port 8080] [--source synthetic|nori] [--device N] [--mode N] [--timeout-ms N] [--self-test]\n";
+            std::cout << "bividi-web [--listen 127.0.0.1] [--port 8080] [--source synthetic|replay|nori] [--session PATH] [--replay-rate X] [--device N] [--mode N] [--timeout-ms N] [--self-test]\n";
             return 0;
         }
         if (arg == "--listen" && i + 1 < argc) {
@@ -576,6 +624,10 @@ int main(int argc, char** argv) {
             port = std::stoi(argv[++i]);
         } else if (arg == "--source" && i + 1 < argc) {
             source = argv[++i];
+        } else if (arg == "--session" && i + 1 < argc) {
+            replay_session = argv[++i];
+        } else if (arg == "--replay-rate" && i + 1 < argc) {
+            replay_rate = parse_positive_double(argv[++i], "replay rate");
         } else if (arg == "--device" && i + 1 < argc) {
             device = parse_u32(argv[++i], "device index");
         } else if (arg == "--mode" && i + 1 < argc) {
@@ -592,5 +644,13 @@ int main(int argc, char** argv) {
         std::cerr << "bividi-web: port must be 1..65535\n";
         return 1;
     }
-    return run_server(listen_address, port, source, device, mode, timeout_ms);
+    return run_server(
+        listen_address,
+        port,
+        source,
+        device,
+        mode,
+        timeout_ms,
+        replay_session,
+        replay_rate);
 }
