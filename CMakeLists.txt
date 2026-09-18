@@ -19,6 +19,8 @@ find_package(Threads REQUIRED)
 add_library(bividi_core STATIC
     src/native/characterization.cpp
     src/native/decxin.cpp
+    src/native/decxin_observation.cpp
+    src/native/observation.cpp
     src/native/session.cpp
 )
 target_include_directories(bividi_core PUBLIC include)
@@ -195,6 +197,10 @@ if(BIVIDI_BUILD_TESTS)
     add_executable(bividi_capture_tests tests/native/test_capture.cpp)
     target_link_libraries(bividi_capture_tests PRIVATE bividi_core)
     add_test(NAME bividi_capture_tests COMMAND bividi_capture_tests)
+
+    add_executable(bividi_observation_tests tests/native/test_observation.cpp)
+    target_link_libraries(bividi_observation_tests PRIVATE bividi_core)
+    add_test(NAME bividi_observation_tests COMMAND bividi_observation_tests)
 
     add_executable(bividi_session_tests tests/native/test_session.cpp)
     target_link_libraries(bividi_session_tests PRIVATE bividi_core)
