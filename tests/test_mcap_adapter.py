@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from bividi.mcap_adapter import (
+    IMAGE_ENCODING,
     McapAdapterError,
     canonicalize_observation,
     read_observations,
@@ -130,6 +131,59 @@ def fixture_observations():
     ]
 
 
+def rewrite_mcap_with_one_valid_crc_payload_corruption(source: Path, destination: Path) -> None:
+    """Rewrite one image payload so MCAP CRCs stay valid while Bividi SHA binding fails."""
+    from mcap.reader import make_reader
+    from mcap.writer import CompressionType, Writer
+
+    with source.open("rb") as stream:
+        reader = make_reader(stream, validate_crcs=True)
+        header = reader.get_header()
+        records = list(reader.iter_messages(log_time_order=False))
+
+    schemas = {}
+    channels = {}
+    for schema, channel, _ in records:
+        if schema is not None:
+            schemas[schema.id] = schema
+        channels[channel.id] = channel
+
+    with destination.open("wb") as stream:
+        writer = Writer(stream, compression=CompressionType.NONE)
+        writer.start(profile=header.profile, library="bividi-test-integrity-rewriter")
+        schema_ids = {
+            schema_id: writer.register_schema(name=schema.name, encoding=schema.encoding, data=schema.data)
+            for schema_id, schema in schemas.items()
+        }
+        channel_ids = {}
+        for channel_id, channel in channels.items():
+            channel_ids[channel_id] = writer.register_channel(
+                schema_id=0 if channel.schema_id == 0 else schema_ids[channel.schema_id],
+                topic=channel.topic,
+                message_encoding=channel.message_encoding,
+                metadata=dict(channel.metadata),
+            )
+
+        mutated = False
+        for _, channel, message in records:
+            data = bytes(message.data)
+            if not mutated and channel.message_encoding == IMAGE_ENCODING:
+                changed = bytearray(data)
+                changed[0] ^= 0xFF
+                data = bytes(changed)
+                mutated = True
+            writer.add_message(
+                channel_id=channel_ids[channel.id],
+                log_time=message.log_time,
+                publish_time=message.publish_time,
+                sequence=message.sequence,
+                data=data,
+            )
+        writer.finish()
+    if not mutated:
+        raise AssertionError("fixture contained no image payload to mutate")
+
+
 class McapAdapterValidationTests(unittest.TestCase):
     def test_canonicalize_rejects_non_tight_image_stride(self):
         sample = fixture_observations()[0]
@@ -176,6 +230,25 @@ class McapAdapterRoundTripTests(unittest.TestCase):
             write_observations(path, fixture_observations())
             with self.assertRaisesRegex(McapAdapterError, "refusing to overwrite"):
                 write_observations(path, fixture_observations())
+
+    def test_valid_mcap_with_mutated_camera_payload_fails_sha_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.mcap"
+            corrupted = Path(tmp) / "corrupted.mcap"
+            write_observations(source, fixture_observations())
+            rewrite_mcap_with_one_valid_crc_payload_corruption(source, corrupted)
+            with self.assertRaisesRegex(McapAdapterError, "payload SHA-256 mismatch"):
+                read_observations(corrupted)
+
+    def test_truncated_mcap_never_returns_partial_observations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.mcap"
+            truncated = Path(tmp) / "truncated.mcap"
+            write_observations(source, fixture_observations())
+            payload = source.read_bytes()
+            truncated.write_bytes(payload[: max(1, len(payload) // 2)])
+            with self.assertRaises(Exception):
+                read_observations(truncated)
 
 
 if __name__ == "__main__":
