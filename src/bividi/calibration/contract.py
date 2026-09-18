@@ -31,6 +31,7 @@ PolicyRole = Literal[
     "explicit-analysis-parameters-no-acceptance-gate",
     "candidate-analysis-no-acceptance-gate",
     "explicit-operator-gates-no-default-thresholds",
+    "structural-provenance-gate-no-numerical-policy",
 ]
 
 
@@ -203,12 +204,28 @@ IMU_CONFIG_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+IMU_PROVENANCE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="imu",
+        name="provenance",
+        module="bividi.calibration.imu_provenance_command",
+        compatibility_tool="imu_calibration_provenance.py",
+        output_role="machine-evidence-json",
+        policy_role="structural-provenance-gate-no-numerical-policy",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
     + IMU_NOISE_COMMAND_CONTRACTS
     + IMU_AXIS_COMMAND_CONTRACTS
     + IMU_CONFIG_COMMAND_CONTRACTS
+    + IMU_PROVENANCE_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
