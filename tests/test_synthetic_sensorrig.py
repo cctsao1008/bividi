@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,9 @@ TOOL_PATH = Path(__file__).resolve().parents[1] / "tools" / "generate_synthetic_
 SPEC = importlib.util.spec_from_file_location("bividi_synthetic_sensorrig_tool", TOOL_PATH)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC is not None and SPEC.loader is not None
+# dataclasses resolves postponed annotations through sys.modules while the
+# dynamically loaded tool is executed.
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
