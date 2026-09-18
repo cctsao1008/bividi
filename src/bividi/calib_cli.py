@@ -137,7 +137,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="run IMU provenance/promotion gate",
         module="bividi.calibration.imu_provenance_command",
     ),
-    CalibrationCommand("imu", "export-kalibr", "export_kalibr_imu.py", (), "export measured IMU parameters for Kalibr"),
+    CalibrationCommand(
+        "imu",
+        "export-kalibr",
+        None,
+        summary="export measured IMU parameters for Kalibr",
+        module="bividi.calibration.kalibr_imu_export_command",
+    ),
 
     # Camera/IMU / #47
     CalibrationCommand("camera-imu", "prepare", "prepare_kalibr_dynamic_session.py", (), "prepare a hash-bound Kalibr dynamic session"),

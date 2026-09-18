@@ -20,6 +20,7 @@ OutputRole = Literal[
     "human-report-markdown",
     "orchestration-json-markdown",
     "machine-evidence-json-and-human-markdown",
+    "interop-yaml-and-machine-manifest",
 ]
 PolicyRole = Literal[
     "named-source-required-for-explicit-gates",
@@ -32,6 +33,7 @@ PolicyRole = Literal[
     "candidate-analysis-no-acceptance-gate",
     "explicit-operator-gates-no-default-thresholds",
     "structural-provenance-gate-no-numerical-policy",
+    "measured-fields-required-synthetic-opt-in",
 ]
 
 
@@ -219,6 +221,21 @@ IMU_PROVENANCE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+IMU_INTEROP_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="imu",
+        name="export-kalibr",
+        module="bividi.calibration.kalibr_imu_export_command",
+        compatibility_tool="export_kalibr_imu.py",
+        output_role="interop-yaml-and-machine-manifest",
+        policy_role="measured-fields-required-synthetic-opt-in",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
@@ -226,6 +243,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + IMU_AXIS_COMMAND_CONTRACTS
     + IMU_CONFIG_COMMAND_CONTRACTS
     + IMU_PROVENANCE_COMMAND_CONTRACTS
+    + IMU_INTEROP_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
