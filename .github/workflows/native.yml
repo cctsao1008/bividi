@@ -28,74 +28,14 @@ jobs:
           bividi-calib --dry-run stereo solve session.json --output calibration.json
           bividi-calib --dry-run imu allan trace.csv
           bividi-calib --dry-run camera-imu import-kalibr result.yaml
-      - name: Parse calibration schemas
-        run: python -c "import glob,json; [json.load(open(p, encoding='utf-8')) for p in glob.glob('calibration/schemas/*.json')]"
       - name: Characterization comparator self-test
         run: python tools/compare_nori_characterization.py --self-test
       - name: Qualification runner self-test
         run: python tools/run_ar0234_qualification.py --self-test
       - name: Qualification campaign comparator self-test
         run: python tools/compare_qualification_campaigns.py --self-test
-      - name: Calibration artifact validator self-test
-        run: python tools/validate_calibration_artifact.py --self-test
-      - name: Validate calibration examples
-        run: |
-          python tools/validate_calibration_artifact.py calibration/examples/imu-synthetic-v1.json
-          python tools/validate_calibration_artifact.py calibration/examples/camera-imu-synthetic-v1.json
-      - name: Stereo calibration workbench contract self-test
-        run: python tools/stereo_calibration_workbench.py --self-test
-      - name: Calibration target scale review self-test
-        run: python tools/review_calibration_target_scale.py --self-test
-      - name: Stereo geometry review self-test
-        run: python tools/review_stereo_geometry.py --self-test
-      - name: Stereo calibration repeatability self-test
-        run: python tools/compare_stereo_calibrations.py --self-test
-      - name: Stereo calibration evidence promotion self-test
-        run: python tools/stereo_calibration_provenance.py --self-test
-      - name: Stereo human report renderer self-test
-        run: python tools/render_stereo_calibration_report.py --self-test
-      - name: Stereo physical campaign planner self-test
-        run: python tools/plan_stereo_calibration_campaign.py --self-test
-      - name: Kalibr IMU exporter self-test
-        run: python tools/export_kalibr_imu.py --self-test
-      - name: Camera-IMU timestamp audit self-test
-        run: python tools/audit_imu_timing.py --self-test
-      - name: Stationary IMU analyzer self-test
-        run: python tools/analyze_imu_stationary.py --self-test
-      - name: Allan deviation noise laboratory self-test
-        run: python tools/analyze_imu_allan.py --self-test
-      - name: Six-position IMU axis laboratory self-test
-        run: python tools/analyze_imu_six_position.py --self-test
-      - name: Controlled gyro rotation laboratory self-test
-        run: python tools/analyze_imu_gyro_rotation.py --self-test
-      - name: IMU calibration provenance gate self-test
-        run: python tools/imu_calibration_provenance.py --self-test
-      - name: IMU configuration consistency laboratory self-test
-        run: python tools/analyze_imu_config_consistency.py --self-test
-      - name: Kalibr dynamic-session preparer self-test
-        run: python tools/prepare_kalibr_dynamic_session.py --self-test
-      - name: Kalibr ROS1 legacy bag adapter self-test
-        run: python tools/write_kalibr_rosbag.py --self-test
-      - name: ROS2 calibration MCAP adapter self-test
-        run: python tools/write_ros2_calibration_mcap.py --self-test
-      - name: Camera-IMU dynamic excitation laboratory self-test
-        run: python tools/analyze_camera_imu_excitation.py --self-test
-      - name: Kalibr target observation adapter contract self-test
-        run: python tools/export_kalibr_target_observations.py --self-test
-      - name: Kalibr target coverage analyzer self-test
-        run: python tools/analyze_kalibr_target_coverage.py --self-test
-      - name: Kalibr camera-IMU importer self-test
-        run: python tools/import_kalibr_camera_imu.py --self-test
-      - name: Kalibr solver quality gate self-test
-        run: python tools/analyze_kalibr_solver_quality.py --self-test
-      - name: Camera-IMU temporal evidence review self-test
-        run: python tools/review_camera_imu_time_offset.py --self-test
-      - name: Camera-IMU repeatability comparator self-test
-        run: python tools/compare_camera_imu_calibrations.py --self-test
-      - name: Camera-IMU evidence promotion gate self-test
-        run: python tools/camera_imu_calibration_provenance.py --self-test
-      - name: Camera-IMU physical campaign planner self-test
-        run: python tools/plan_camera_imu_physical_campaign.py --self-test
+      - name: Calibration tool self-test suite
+        run: python -m bividi.calib_selftests
       - name: Configure
         run: cmake -S . -B build -DBIVIDI_WITH_OPENCV=OFF -DBIVIDI_BUILD_VIEWER=OFF -DBIVIDI_BUILD_WEB=OFF -DBIVIDI_BUILD_TESTS=ON
       - name: Build
