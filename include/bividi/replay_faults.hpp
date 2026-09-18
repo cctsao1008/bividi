@@ -13,9 +13,10 @@ namespace bividi {
 
 inline constexpr const char* kReplayFaultRecipeSchemaV1 = "bividi.replay_fault_recipe.v1";
 inline constexpr const char* kReplayFaultRecipeSchemaV2 = "bividi.replay_fault_recipe.v2";
-// New programmatic recipes default to the latest schema. The loader continues
-// to accept v1 and keeps the original v1 action set frozen.
-inline constexpr const char* kReplayFaultRecipeSchema = kReplayFaultRecipeSchemaV2;
+// Preserve the original public alias for source compatibility. New
+// programmatic recipes default to kReplayFaultRecipeLatestSchema below.
+inline constexpr const char* kReplayFaultRecipeSchema = kReplayFaultRecipeSchemaV1;
+inline constexpr const char* kReplayFaultRecipeLatestSchema = kReplayFaultRecipeSchemaV2;
 
 enum class ReplayFaultAction {
     drop,
@@ -58,13 +59,13 @@ struct ReplayFaultRule {
     std::int64_t delta = 0;            // sequence/time/epoch delta
     std::string stream_id;             // remove_camera / camera_exposure_time_delta_us
     std::string pair_id;               // set_stereo_synchronization
-    std::size_t imu_index = 0;          // v2 indexed IMU actions
+    std::size_t imu_index = 0;         // v2 indexed IMU actions
     SynchronizationState synchronization = SynchronizationState::unknown;
     ContinuityState continuity = ContinuityState::continuous;
 };
 
 struct ReplayFaultRecipe {
-    std::string schema = kReplayFaultRecipeSchema;
+    std::string schema = kReplayFaultRecipeLatestSchema;
     std::uint64_t seed = 0;
     std::vector<ReplayFaultRule> rules;
 };
