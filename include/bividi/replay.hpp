@@ -65,6 +65,7 @@ public:
 
     [[nodiscard]] const SensorCapabilities& capabilities() const noexcept;
     [[nodiscard]] const ReplayMetadata& metadata() const noexcept;
+    [[nodiscard]] const std::string& source_id() const noexcept;
     [[nodiscard]] std::size_t size() const noexcept;
     [[nodiscard]] std::size_t position() const noexcept;
     [[nodiscard]] bool eof() const noexcept;
