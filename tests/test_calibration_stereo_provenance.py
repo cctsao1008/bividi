@@ -20,6 +20,7 @@ class StereoProvenanceModuleTests(unittest.TestCase):
         manifest_policy: str | None = "lab-v1",
         quality_status: str = "PASS",
     ) -> tuple[argparse.Namespace, dict[str, Path]]:
+        root.mkdir(parents=True, exist_ok=True)
         target_path = root / "target.json"
         target_path.write_text(
             json.dumps({"schema": stereo_provenance.TARGET_SCHEMA, "target_id": "t"}),
@@ -184,7 +185,6 @@ class StereoProvenanceModuleTests(unittest.TestCase):
                 profile="integrity",
                 quality_status="FAIL",
             )
-            integrity_args.output.parent.mkdir(parents=True, exist_ok=True)
             integrity = stereo_provenance.build(integrity_args)
             self.assertEqual(integrity["disposition"], "INTEGRITY_OK")
 
@@ -193,7 +193,6 @@ class StereoProvenanceModuleTests(unittest.TestCase):
                 profile="review",
                 quality_status="FAIL",
             )
-            review_args.output.parent.mkdir(parents=True, exist_ok=True)
             review = stereo_provenance.build(review_args)
             self.assertEqual(review["disposition"], "FAIL")
             self.assertTrue(any("status is FAIL" in item for item in review["findings"]))
