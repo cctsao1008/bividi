@@ -11,7 +11,11 @@
 
 namespace bividi {
 
-inline constexpr const char* kReplayFaultRecipeSchema = "bividi.replay_fault_recipe.v1";
+inline constexpr const char* kReplayFaultRecipeSchemaV1 = "bividi.replay_fault_recipe.v1";
+inline constexpr const char* kReplayFaultRecipeSchemaV2 = "bividi.replay_fault_recipe.v2";
+// New programmatic recipes default to the latest schema. The loader continues
+// to accept v1 and keeps the original v1 action set frozen.
+inline constexpr const char* kReplayFaultRecipeSchema = kReplayFaultRecipeSchemaV2;
 
 enum class ReplayFaultAction {
     drop,
@@ -23,6 +27,14 @@ enum class ReplayFaultAction {
     imu_sample_time_delta_us,
     set_stereo_synchronization,
     set_continuity,
+
+    // V2 additions. These operate only on the normalized observation evidence
+    // named by the rule. Raw finite-width timestamp evidence is deliberately
+    // preserved unless an action explicitly says otherwise.
+    camera_exposure_time_delta_us,
+    drop_imu_sample,
+    duplicate_imu_sample,
+    imu_sample_time_delta_at_index_us,
 };
 
 enum class ReplayFaultExpectedDisposition {
@@ -42,10 +54,11 @@ struct ReplayFaultRule {
 
     // Action-specific fields. The JSON loader rejects fields that are not
     // meaningful for the selected action instead of silently ignoring them.
-    std::uint32_t copies = 0;          // duplicate: additional copies
+    std::uint32_t copies = 0;          // duplicate / duplicate_imu_sample: additional copies
     std::int64_t delta = 0;            // sequence/time/epoch delta
-    std::string stream_id;             // remove_camera
+    std::string stream_id;             // remove_camera / camera_exposure_time_delta_us
     std::string pair_id;               // set_stereo_synchronization
+    std::size_t imu_index = 0;          // v2 indexed IMU actions
     SynchronizationState synchronization = SynchronizationState::unknown;
     ContinuityState continuity = ContinuityState::continuous;
 };
@@ -62,9 +75,9 @@ struct ReplayFaultStats {
     std::size_t triggered_rules = 0;
 };
 
-// Strict JSON loader. The recipe is intentionally deterministic in v1; seed is
-// required provenance for future seeded stochastic actions but v1 has no random
-// action semantics.
+// Strict JSON loader. V1 remains frozen and readable. V2 adds deterministic
+// device-clock and indexed-IMU actions while retaining all v1 actions. Seed is
+// required provenance; neither version currently consumes randomness.
 [[nodiscard]] ReplayFaultRecipe load_replay_fault_recipe(const std::filesystem::path& path);
 
 // Programmatic validation is also exposed so tests/tools may construct recipes
