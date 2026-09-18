@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-import validate_calibration_artifact
+from . import artifact_validator as validate_calibration_artifact
 
 ARTIFACT_SCHEMA = "bividi.calibration.camera_imu.v1"
 REPORT_SCHEMA = "bividi.calibration.camera_imu_repeatability.v1"
