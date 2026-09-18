@@ -1,6 +1,6 @@
 # Calibration command behavior contract
 
-Status: frozen from the package-native stereo leaves implemented under Issue #60.
+Status: frozen from the package-native stereo leaves implemented under Issue #60 and extended incrementally to package-native IMU leaves under Issue #89.
 
 This document defines the command-level behavior that `bividi-calib` must preserve while implementations move between compatibility scripts and installed package modules. It does **not** define calibration math, artifact schemas, or product/lab thresholds.
 
@@ -12,7 +12,9 @@ This document defines the command-level behavior that `bividi-calib` must preser
 | `2` | Usage, malformed input, schema/input-domain error, or other command-domain error. |
 | `3` | A command successfully evaluated evidence and the resulting quality/disposition is explicitly `FAIL`. |
 
-`3` is therefore not a parser/runtime error. It means the evaluation itself completed and found failing evidence. Presentation/orchestration commands that do not own a quality disposition do not manufacture an exit-3 state.
+`3` is therefore not a parser/runtime error. It means the evaluation itself completed and found failing evidence. Presentation/orchestration/analysis commands that do not own a quality disposition do not manufacture an exit-3 state.
+
+The package-native `imu timing-audit` and `imu stationary` commands are analysis leaves. They return `0` for a completed analysis and `2` for usage/input/domain failures; they do not currently own a PASS/FAIL evidence disposition and therefore do not use exit `3`.
 
 ## Provenance identity
 
@@ -30,6 +32,8 @@ Current frozen identities:
 
 `stereo report` is presentation-only Markdown and does not create a new versioned evidence artifact merely to attach provenance.
 
+The existing `bividi.calibration.camera_imu_timing_audit.v1` and `bividi.calibration.imu_stationary_analysis.v1` reports predate package migration and do not carry a top-level versioned `provenance` object. Issue #89 preserves those schemas rather than injecting new fields merely to make the metadata table uniform. The stationary report's `scale_conversion.source` remains the required provenance label for an operator-supplied SI conversion scale.
+
 ## Policy-source semantics
 
 There is no universal calibration threshold hidden in the CLI.
@@ -41,6 +45,12 @@ For package-native stereo evidence producers/reviewers:
 - `promote` owns no numeric thresholds. Promotion instead requires the manifest policy source and the already-generated quality evidence to carry explicit PASS/gates/policy information, in addition to measured provenance and source-integrity requirements.
 - `report` only renders existing status/policy information. It cannot promote, downgrade, or invent evidence.
 - `campaign` may record a policy source as orchestration metadata, but its presence/schema audit does not perform quality/hash/policy verification.
+
+For the package-native IMU foundation leaves:
+
+- `imu timing-audit --gap-threshold-us` is an explicit analysis parameter used only to count long intervals. It is **not** an acceptance gate and does not create PASS/FAIL evidence.
+- `imu stationary` never infers sensor full-scale from the vendor demo. Supplying `--accel-g-per-count` and/or `--gyro-dps-per-count` requires an explicit `--scale-source`; that source identifies the conversion assumption/evidence and is not a product acceptance policy.
+- Neither command invents a 600 Hz requirement, a synchronization threshold, or a calibrated camera↔IMU offset.
 
 ## Output roles
 
@@ -54,8 +64,10 @@ The consolidated CLI intentionally does not force all leaves into one output sha
 | `stereo promote` | machine evidence JSON | Hash-bound evidence manifest and controlled disposition. |
 | `stereo report` | human-readable Markdown | Downstream presentation only; machine evidence remains authoritative. |
 | `stereo campaign` | orchestration JSON + Markdown runbook; audit JSON | Workflow/dependency/presence metadata, not quality proof. |
+| `imu timing-audit` | Markdown stdout + optional machine JSON / Markdown files | Timing/continuity evidence in the DECXIN device-time domain; nearest-sample deltas are not a calibrated temporal offset. |
+| `imu stationary` | Markdown stdout + optional machine JSON / Markdown files | Raw-count statistics plus optional explicitly sourced SI conversion; accelerometer stationary mean includes gravity. |
 
-Machine-readable evidence and gate artifacts remain authoritative. Human-readable output is a view over that evidence, and orchestration output describes what should exist rather than proving that the evidence is acceptable.
+Machine-readable evidence and gate artifacts remain authoritative where a gate exists. Human-readable output is a view over the analysis/evidence, and orchestration output describes what should exist rather than proving that the evidence is acceptable.
 
 ## Package/compatibility rule
 
@@ -70,11 +82,11 @@ legacy tools/*.py
     -> same installed module
 ```
 
-Both surfaces must preserve the same artifact schema, status/disposition semantics, provenance identity where applicable, and exit-code behavior.
+Both surfaces must preserve the same artifact schema, evidence/interpretation semantics, provenance identity where applicable, and command-level exit-code behavior.
 
-## Frozen package-native stereo set
+## Frozen package-native set
 
-The contract currently covers:
+Stereo:
 
 - `stereo target-scale`
 - `stereo geometry-review`
@@ -83,4 +95,9 @@ The contract currently covers:
 - `stereo report`
 - `stereo campaign`
 
-Heavier OpenCV workbench commands and camera/IMU/IMU leaves can adopt this contract incrementally after their existing behavior is characterized. They should not be normalized by changing semantics merely to make the table look uniform.
+IMU foundation:
+
+- `imu timing-audit`
+- `imu stationary`
+
+Heavier OpenCV workbench commands and the remaining IMU/camera↔IMU leaves can adopt this contract incrementally after their existing behavior is characterized. They should not be normalized by changing measurement or evidence semantics merely to make the table look uniform.
