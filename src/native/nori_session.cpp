@@ -1,4 +1,5 @@
 #include "bividi/nori_session.hpp"
+#include "bividi/decxin_observation.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -108,7 +109,7 @@ std::string source_id(const StreamConfig& config) {
     return out.str();
 }
 
-SensorCapabilities observation_capabilities() {
+SensorCapabilities make_observation_capabilities() {
     SensorCapabilities caps{};
     caps.cameras = {
         {
@@ -146,7 +147,7 @@ SensorCapabilities observation_capabilities() {
 struct NoriCaptureSession::Impl {
     explicit Impl(NoriSessionConfig session_config)
         : config(std::move(session_config)),
-          capabilities(observation_capabilities()) {
+          capabilities(make_observation_capabilities()) {
         const auto conformance = validate_capabilities(capabilities);
         if (!conformance.ok) {
             throw std::invalid_argument("internal Nori normalized capabilities are invalid");
