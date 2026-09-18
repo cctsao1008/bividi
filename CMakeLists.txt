@@ -107,6 +107,14 @@ if(BIVIDI_WITH_OPENCV)
 
     find_package(OpenCV QUIET COMPONENTS core imgproc imgcodecs)
     if(OpenCV_FOUND)
+        add_library(bividi_replay STATIC
+            src/native/replay_opencv.cpp
+        )
+        target_include_directories(bividi_replay PUBLIC include ${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(bividi_replay PUBLIC bividi_core ${OpenCV_LIBS})
+        target_compile_features(bividi_replay PUBLIC cxx_std_17)
+        message(STATUS "Bividi native session replay enabled")
+
         add_library(bividi_nori_opencv STATIC
             src/native/nori_opencv.cpp
             src/native/nori_decxin.cpp
@@ -116,7 +124,7 @@ if(BIVIDI_WITH_OPENCV)
         target_compile_features(bividi_nori_opencv PUBLIC cxx_std_17)
         message(STATUS "Bividi Nori transport normalization + DECXIN pipeline enabled")
     else()
-        message(STATUS "OpenCV imgproc/imgcodecs not found; Nori transport normalization disabled")
+        message(STATUS "OpenCV imgproc/imgcodecs not found; Nori transport normalization and native replay disabled")
     endif()
 endif()
 
@@ -226,6 +234,12 @@ if(BIVIDI_BUILD_TESTS)
         add_executable(bividi_opencv_tests tests/native/test_opencv.cpp)
         target_link_libraries(bividi_opencv_tests PRIVATE bividi_opencv)
         add_test(NAME bividi_opencv_tests COMMAND bividi_opencv_tests)
+    endif()
+
+    if(TARGET bividi_replay)
+        add_executable(bividi_replay_tests tests/native/test_replay.cpp)
+        target_link_libraries(bividi_replay_tests PRIVATE bividi_replay)
+        add_test(NAME bividi_replay_tests COMMAND bividi_replay_tests)
     endif()
 
     if(TARGET bividi_nori_opencv)
