@@ -12,6 +12,7 @@ The current concrete reference-device line is **stereo AR0234 + IMU**. Core arch
 - [`web-ui.md`](web-ui.md) — lightweight browser engineering console, HTTP/MJPEG boundary, and security posture
 - [`recording.md`](recording.md) — native `SensorObservation` replay, viewer/web replay adapters, MCAP direction, and container-independence rule
 - [`mcap-observation.md`](mcap-observation.md) — versioned Bividi-native `SensorObservation` MCAP profile, timestamp separation, camera payload integrity, and semantic round-trip contract
+- [`replay-fault-injection.md`](replay-fault-injection.md) — deterministic versioned replay fault recipes, expected-disposition separation, and #35 physical-test boundary
 
 ## Active reference device
 
