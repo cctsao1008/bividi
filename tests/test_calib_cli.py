@@ -112,22 +112,24 @@ class CalibrationCliTests(unittest.TestCase):
         self.assertIn("stereo", output)
         self.assertIn("camera-imu", output)
 
-    def test_dry_run_does_not_import_heavy_dependencies(self):
+    def test_dry_run_does_not_execute_remaining_legacy_route(self):
+        legacy = next(item for item in calib_cli.commands() if item.script is not None)
+        assert legacy.script is not None
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "tools").mkdir()
             (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
-            script = root / "tools" / "analyze_imu_six_position.py"
+            script = root / "tools" / legacy.script
             script.write_text("raise RuntimeError('must not execute')\n", encoding="utf-8")
 
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 rc = calib_cli.main(
-                    ["--source-root", str(root), "--dry-run", "imu", "six-position", "trace.csv"]
+                    ["--source-root", str(root), "--dry-run", legacy.group, legacy.name, "fixture-input"]
                 )
             self.assertEqual(rc, 0)
-            self.assertIn("analyze_imu_six_position.py", stdout.getvalue())
-            self.assertIn("trace.csv", stdout.getvalue())
+            self.assertIn(legacy.script, stdout.getvalue())
+            self.assertIn("fixture-input", stdout.getvalue())
 
     def test_migrated_module_dry_runs_are_source_tree_independent(self):
         for command, module in _MIGRATED_STEREO_MODULES.items():
