@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,8 @@ class CalibrationCliTests(unittest.TestCase):
         self.assertIn(("stereo", "solve"), pairs)
         self.assertIn(("imu", "allan"), pairs)
         self.assertIn(("camera-imu", "import-kalibr"), pairs)
+        for item in calib_cli.commands():
+            self.assertNotEqual(item.script is None, item.module is None)
 
     def test_find_source_root_accepts_explicit_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -43,6 +46,37 @@ class CalibrationCliTests(unittest.TestCase):
             self.assertEqual(invocation[0], sys.executable)
             self.assertEqual(Path(invocation[1]), script.resolve())
             self.assertEqual(invocation[2:], ["solve", "session.json", "--output", "calibration.json"])
+
+    def test_migrated_module_does_not_require_source_checkout(self):
+        invocation = calib_cli.build_invocation(
+            "stereo",
+            "target-scale",
+            ["target.json", "--measurement-source", "caliper", "--method", "caliper"],
+            source_root=Path("/definitely/not/a/bividi/checkout"),
+        )
+        self.assertEqual(
+            invocation[:3],
+            [sys.executable, "-m", "bividi.calibration.target_scale"],
+        )
+        self.assertEqual(invocation[3], "target.json")
+
+    def test_migrated_module_executes_outside_source_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = Path.cwd()
+            os.chdir(tmp)
+            try:
+                rc = calib_cli.main(
+                    [
+                        "--source-root",
+                        "/definitely/not/a/bividi/checkout",
+                        "stereo",
+                        "target-scale",
+                        "--self-test",
+                    ]
+                )
+            finally:
+                os.chdir(previous)
+        self.assertEqual(rc, 0)
 
     def test_unknown_command_returns_explicit_error(self):
         stderr = io.StringIO()
@@ -83,6 +117,28 @@ class CalibrationCliTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertIn("analyze_imu_allan.py", stdout.getvalue())
             self.assertIn("trace.csv", stdout.getvalue())
+
+    def test_migrated_module_dry_run_is_source_tree_independent(self):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            rc = calib_cli.main(
+                [
+                    "--source-root",
+                    "/definitely/not/a/bividi/checkout",
+                    "--dry-run",
+                    "stereo",
+                    "target-scale",
+                    "target.json",
+                    "--measurement-source",
+                    "caliper",
+                    "--method",
+                    "caliper",
+                ]
+            )
+        self.assertEqual(rc, 0)
+        output = stdout.getvalue()
+        self.assertIn("-m bividi.calibration.target_scale", output)
+        self.assertNotIn("review_calibration_target_scale.py", output)
 
 
 if __name__ == "__main__":

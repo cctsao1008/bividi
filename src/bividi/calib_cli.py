@@ -1,8 +1,10 @@
-"""Discoverable calibration CLI that delegates to the existing evidence tools.
+"""Discoverable calibration CLI over installed and compatibility implementations.
 
-This first #60 slice intentionally does not duplicate calibration algorithms.  It
-provides one stable operator entry point over the current source-tree tools while
-those tools are migrated into package modules incrementally.
+Issue #60 migrates reusable calibration/evidence implementations from the
+source-tree ``tools/`` compatibility surface into installed package modules
+incrementally. Commands already migrated execute from the installed package;
+remaining commands continue to delegate to the existing source-tree tools
+without copying their algorithms into a parallel implementation.
 """
 
 from __future__ import annotations
@@ -21,9 +23,16 @@ from collections.abc import Sequence
 class CalibrationCommand:
     group: str
     name: str
-    script: str
+    script: str | None
     prefix: tuple[str, ...] = ()
     summary: str = ""
+    module: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.script is None) == (self.module is None):
+            raise ValueError(
+                f"calibration command {self.group} {self.name} must declare exactly one implementation target"
+            )
 
 
 _COMMANDS: tuple[CalibrationCommand, ...] = (
@@ -35,7 +44,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
     CalibrationCommand("stereo", "solve", "stereo_calibration_workbench.py", ("solve",), "solve mono/stereo calibration"),
     CalibrationCommand("stereo", "validate", "stereo_calibration_workbench.py", ("validate",), "validate a stereo calibration artifact"),
     CalibrationCommand("stereo", "rectify", "stereo_calibration_workbench.py", ("rectify",), "render a rectification inspection view"),
-    CalibrationCommand("stereo", "target-scale", "review_calibration_target_scale.py", (), "review measured target print scale"),
+    CalibrationCommand(
+        "stereo",
+        "target-scale",
+        None,
+        summary="review measured target print scale",
+        module="bividi.calibration.target_scale",
+    ),
     CalibrationCommand("stereo", "geometry-review", "review_stereo_geometry.py", (), "review physical stereo geometry evidence"),
     CalibrationCommand("stereo", "repeatability", "compare_stereo_calibrations.py", (), "compare independent stereo calibrations"),
     CalibrationCommand("stereo", "promote", "stereo_calibration_provenance.py", (), "run stereo evidence/promotion gate"),
@@ -89,11 +104,11 @@ def _looks_like_checkout(root: Path) -> bool:
 
 
 def find_source_root(explicit: str | Path | None = None) -> Path:
-    """Find the checkout containing the legacy calibration tool scripts.
+    """Find the checkout containing legacy calibration compatibility scripts.
 
-    `bividi-calib` is deliberately a router in this first slice.  Explicit
-    `--source-root` and BIVIDI_SOURCE_ROOT make installed/editable behavior
-    deterministic while migration of the implementation modules proceeds.
+    Installed package modules do not use this lookup. Explicit ``--source-root``
+    and ``BIVIDI_SOURCE_ROOT`` keep the remaining compatibility dispatches
+    deterministic while Issue #60 migrates implementations incrementally.
     """
 
     candidates: list[Path] = []
@@ -145,7 +160,11 @@ def build_invocation(
     source_root: str | Path | None = None,
 ) -> list[str]:
     command = resolve_command(group, name)
+    if command.module is not None:
+        return [sys.executable, "-m", command.module, *command.prefix, *tool_args]
+
     root = find_source_root(source_root)
+    assert command.script is not None
     script = root / "tools" / command.script
     if not script.is_file():
         raise RuntimeError(
@@ -157,7 +176,7 @@ def build_invocation(
 def _print_global_help() -> None:
     print("usage: bividi-calib [--source-root PATH] [--dry-run] <group> <command> [tool args...]")
     print()
-    print("Calibration workflow router. Existing tools remain compatibility entry points.")
+    print("Calibration workflow router. Migrated commands run from the installed package; remaining tools keep compatibility dispatch.")
     print("Use '<group> --help' to list a group and '<group> <command> --help' for exact tool arguments.")
     print()
     print("groups:")
@@ -168,7 +187,7 @@ def _print_global_help() -> None:
     print("  -h, --help           show this help")
     print("  --list               list all routed commands")
     print("  --version            show Bividi package version")
-    print("  --source-root PATH   explicit Bividi source checkout")
+    print("  --source-root PATH   source checkout for legacy-routed commands")
     print("  --dry-run            print delegated command without executing it")
 
 
