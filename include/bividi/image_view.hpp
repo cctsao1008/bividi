@@ -8,6 +8,7 @@ namespace bividi {
 
 enum class PixelFormat {
     unknown,
+    gray8,
     bgr24,
 };
 
