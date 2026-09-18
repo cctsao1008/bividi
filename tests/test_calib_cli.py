@@ -14,6 +14,7 @@ from bividi import calib_cli
 _MIGRATED_STEREO_MODULES = {
     "target-scale": "bividi.calibration.target_scale",
     "geometry-review": "bividi.calibration.stereo_geometry",
+    "repeatability": "bividi.calibration.stereo_repeatability",
 }
 
 
