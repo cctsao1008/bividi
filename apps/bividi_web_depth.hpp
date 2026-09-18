@@ -9,9 +9,9 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace bividi_web {
@@ -53,6 +53,8 @@ public:
 
     [[nodiscard]] const std::string& calibration_id() const noexcept { return calibration_id_; }
     [[nodiscard]] const std::string& pair_id() const noexcept { return pair_id_; }
+
+    void reset() noexcept { processor_.reset(); }
 
     std::string status_json() {
         bividi::depth::StereoDepthSnapshot snapshot;
