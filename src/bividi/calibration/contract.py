@@ -119,6 +119,8 @@ STEREO_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+# Issue #89 foundation leaves. Kept as a focused tuple because tests and docs
+# treat timing/stationary as the coupled base that later IMU laboratories build on.
 IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="imu",
@@ -142,6 +144,11 @@ IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
         tool_version=None,
         evaluated_fail_exit=None,
     ),
+)
+
+
+# Package-native noise-characterization laboratories layered on that foundation.
+IMU_NOISE_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="imu",
         name="allan",
@@ -157,7 +164,7 @@ IMU_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 
 
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    STEREO_COMMAND_CONTRACTS + IMU_COMMAND_CONTRACTS
+    STEREO_COMMAND_CONTRACTS + IMU_COMMAND_CONTRACTS + IMU_NOISE_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
