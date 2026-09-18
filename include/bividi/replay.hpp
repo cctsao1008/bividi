@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace bividi {
 
@@ -17,12 +18,39 @@ enum class ReplayPacing {
     scaled,
 };
 
+// Optional replay-stage interception seam used by deterministic test tooling.
+// The source observation is fully materialized and conformance-checked before
+// this hook runs. An interceptor may emit zero, one, or many observations and
+// may buffer observations until a later source input or flush(). This is what
+// lets #59 implement drop/duplicate/reorder/timing/pairing faults without adding
+// fault branches to production device decoding.
+//
+// Interceptor output is deliberately NOT revalidated by ReplaySource: a fault
+// recipe may intentionally produce degraded or structurally invalid evidence.
+// Consumers/tests remain responsible for the expected disposition.
+class ReplayObservationInterceptor {
+public:
+    virtual ~ReplayObservationInterceptor() = default;
+
+    virtual void reset() {}
+
+    virtual void transform(
+        std::size_t source_position,
+        SensorObservation observation,
+        std::vector<SensorObservation>& output) = 0;
+
+    virtual void flush(std::vector<SensorObservation>& output) {
+        (void)output;
+    }
+};
+
 struct ReplayConfig {
     std::filesystem::path session_dir;
     ReplayPacing pacing = ReplayPacing::step;
     double rate = 1.0;
     std::string source_id;
     EvidenceKind evidence_override = EvidenceKind::unknown;
+    std::shared_ptr<ReplayObservationInterceptor> interceptor;
 };
 
 // Adapter-level provenance from the imported recording. This remains separate
@@ -65,17 +93,23 @@ public:
 
     [[nodiscard]] const SensorCapabilities& capabilities() const noexcept;
     [[nodiscard]] const ReplayMetadata& metadata() const noexcept;
+
+    // size()/position() describe the original source timeline, not the number
+    // of observations emitted by an optional interceptor.
     [[nodiscard]] std::size_t size() const noexcept;
     [[nodiscard]] std::size_t position() const noexcept;
     [[nodiscard]] bool eof() const noexcept;
 
-    // Emits the next original observation in deterministic source order. Step
-    // and as-fast modes never sleep. Real-time/scaled modes pace from preserved
-    // original host-receive deltas when those deltas are monotonic.
+    // Emits the next observation. Without an interceptor this is the next
+    // original observation in deterministic source order. With an interceptor
+    // it is the next emitted observation after the explicit replay-stage hook.
+    // Step/as-fast modes never sleep. Real-time/scaled modes pace source
+    // materialization from preserved original host-receive deltas.
     bool next(SensorObservation& out);
 
     // Rewind to the first recorded observation. Original timestamps/sequence
-    // are unchanged; a new replay scheduling epoch begins on the next call.
+    // are unchanged; a new replay scheduling epoch begins on the next call and
+    // the optional interceptor is reset.
     void reset();
 
 private:
