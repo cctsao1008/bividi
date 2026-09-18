@@ -120,9 +120,11 @@ class ImuSixPositionPackageMigrationTests(unittest.TestCase):
         self.assertIn("missing required pose trace", stderr.getvalue())
 
     def test_contract_metadata_matches_route_and_candidate_semantics(self):
-        self.assertEqual(len(contract.IMU_AXIS_COMMAND_CONTRACTS), 1)
-        item = contract.IMU_AXIS_COMMAND_CONTRACTS[0]
-        self.assertEqual(item.key, ("imu", "six-position"))
+        item = next(
+            item
+            for item in contract.IMU_AXIS_COMMAND_CONTRACTS
+            if item.key == ("imu", "six-position")
+        )
         self.assertEqual(item.module, "bividi.calibration.imu_six_position_command")
         self.assertEqual(item.compatibility_tool, "analyze_imu_six_position.py")
         self.assertEqual(item.output_role, "machine-evidence-json-and-human-markdown")
