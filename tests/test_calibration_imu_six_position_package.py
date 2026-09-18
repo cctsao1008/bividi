@@ -88,7 +88,7 @@ class ImuSixPositionPackageMigrationTests(unittest.TestCase):
             self.assertEqual((mapping["z"]["raw_axis"], mapping["z"]["sign"]), ("x", "-"))
             self.assertEqual(report["accelerometer_axis_mapping"]["signed_permutation_determinant"], 1.0)
             self.assertIn(
-                "Static gravity does not identify gyroscope axis permutation or sign.",
+                "Static gravity does not identify gyroscope axis permutation or sign. Controlled rotations are required for gyro-axis validation.",
                 report["guardrails"],
             )
 
