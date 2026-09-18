@@ -4,8 +4,10 @@
 #include "bividi/capture.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace bividi {
