@@ -27,7 +27,7 @@ one discoverable CLI
 one opaque calibration algorithm
 ```
 
-The underlying evidence concepts remain separate: target/session construction, inspection, solving, physical geometry review, repeatability, provenance/promotion, IMU noise/axis work, Kalibr export/import, solver quality, temporal review, and physical campaign planning.
+The underlying evidence concepts remain separate: target/session construction, inspection, solving, physical geometry review, repeatability, human-readable rendering, provenance/promotion, IMU noise/axis work, Kalibr export/import, solver quality, temporal review, and physical campaign planning.
 
 Existing `tools/*.py` entry points remain compatibility surfaces during migration. Versioned artifacts remain readable independently of command naming.
 
@@ -47,6 +47,7 @@ Commands already migrated under `src/bividi/` execute from the installed package
 bividi-calib stereo target-scale --help
 bividi-calib stereo geometry-review --help
 bividi-calib stereo repeatability --help
+bividi-calib stereo report --help
 ```
 
 Remaining compatibility-routed commands still locate the source checkout containing `tools/`. Their resolution order is:
@@ -126,7 +127,7 @@ The leaf implementation exit code is preserved by the router.
 | `stereo geometry-review` | installed `bividi.calibration.stereo_geometry`; legacy wrapper `tools/review_stereo_geometry.py` |
 | `stereo repeatability` | installed `bividi.calibration.stereo_repeatability`; legacy wrapper `tools/compare_stereo_calibrations.py` |
 | `stereo promote` | `tools/stereo_calibration_provenance.py` |
-| `stereo report` | `tools/render_stereo_calibration_report.py` |
+| `stereo report` | installed `bividi.calibration.stereo_report`; legacy wrapper `tools/render_stereo_calibration_report.py` |
 | `stereo campaign` | `tools/plan_stereo_calibration_campaign.py` |
 | `imu timing-audit` | `tools/audit_imu_timing.py` |
 | `imu stationary/allan/six-position/gyro-rotation/config-consistency` | corresponding `tools/analyze_imu_*.py` |
@@ -144,7 +145,7 @@ The leaf implementation exit code is preserved by the router.
 | `camera-imu promote` | `tools/camera_imu_calibration_provenance.py` |
 | `camera-imu campaign` | `tools/plan_camera_imu_physical_campaign.py` |
 
-The `target-scale`, `geometry-review`, and `repeatability` migrations are the first package-native leaves. Their legacy wrappers delegate to installed modules while preserving the historical artifact `provenance.tool`, schemas, named-policy requirements, and exit-code semantics. This is the template for subsequent dependency-light migrations.
+The `target-scale`, `geometry-review`, `repeatability`, and `report` migrations are the first package-native stereo leaves. Their legacy wrappers delegate to installed modules while preserving the existing evidence schemas/semantics and historical command behavior. The report renderer remains presentation-only: it does not manufacture acceptance evidence or replace the provenance gate. This is the template for subsequent dependency-light migrations.
 
 ## Central self-test manifest
 
@@ -164,10 +165,10 @@ Characterization/qualification self-tests for #35 remain separate from this cali
 
 The router and self-test manifest use only the Python standard library. Optional dependencies remain owned by the leaf implementation that needs them. In particular, OpenCV, ROS1/Kalibr, ROS2/rosbag2, and MCAP are not pulled into unrelated calibration commands by the router.
 
-`synthetic`, `measured`, and `imported` provenance, named policy sources, SHA-256 evidence binding, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. Package migration must preserve those meanings; command routing does not normalize or reinterpret thresholds.
+`synthetic`, `measured`, and `imported` provenance, named policy sources, SHA-256 evidence binding, and explicit unknown/unmeasured fields remain semantics of the existing tools and artifacts. Package migration must preserve those meanings; command routing does not normalize or reinterpret thresholds. Human-readable rendering is downstream of those machine-readable artifacts and never upgrades their evidence disposition.
 
 ## Current limitations / next #60 slices
 
-Three dependency-light stereo evidence implementations (`stereo target-scale`, `stereo geometry-review`, and `stereo repeatability`) have moved under the installed package. Most commands still dispatch into source-tree scripts and therefore still require a checkout containing `tools/`.
+Four dependency-light stereo implementations (`stereo target-scale`, `stereo geometry-review`, `stereo repeatability`, and `stereo report`) have moved under the installed package. Most commands still dispatch into source-tree scripts and therefore still require a checkout containing `tools/`.
 
-The next structural work is to migrate additional reusable dependency-light implementations under `src/bividi/calibration/` with the old scripts reduced to thin wrappers. Stereo report generation is a good next candidate, followed by the evidence/promotion and campaign surfaces if their semantics remain cleanly packageable. Heavier OpenCV/ROS-facing implementations should follow without importing those optional dependencies into unrelated commands. Common machine-readable output/version/exit-code conventions can be tightened as the implementations move, without changing existing artifact schemas or evidence gates.
+The next structural work should assess the stereo provenance/promotion and physical campaign surfaces for package migration. At this point there are enough real package-native leaves to begin extracting only the common behavior that is genuinely shared—error/exit-code vocabulary, stable tool/version identity, and machine-readable output conventions—without changing existing artifact schemas or evidence gates. Heavier OpenCV/ROS-facing implementations should remain isolated from unrelated commands.
