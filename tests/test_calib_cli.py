@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import sys
 import tempfile
 import unittest
@@ -58,6 +59,24 @@ class CalibrationCliTests(unittest.TestCase):
             [sys.executable, "-m", "bividi.calibration.target_scale"],
         )
         self.assertEqual(invocation[3], "target.json")
+
+    def test_migrated_module_executes_outside_source_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = Path.cwd()
+            os.chdir(tmp)
+            try:
+                rc = calib_cli.main(
+                    [
+                        "--source-root",
+                        "/definitely/not/a/bividi/checkout",
+                        "stereo",
+                        "target-scale",
+                        "--self-test",
+                    ]
+                )
+            finally:
+                os.chdir(previous)
+        self.assertEqual(rc, 0)
 
     def test_unknown_command_returns_explicit_error(self):
         stderr = io.StringIO()
