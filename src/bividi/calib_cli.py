@@ -204,7 +204,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="compare repeated camera/IMU solves",
         module="bividi.calibration.camera_imu_repeatability_command",
     ),
-    CalibrationCommand("camera-imu", "promote", "camera_imu_calibration_provenance.py", (), "run camera/IMU evidence promotion gate"),
+    CalibrationCommand(
+        "camera-imu",
+        "promote",
+        None,
+        summary="run camera/IMU evidence promotion gate",
+        module="bividi.calibration.camera_imu_provenance_command",
+    ),
     CalibrationCommand("camera-imu", "campaign", "plan_camera_imu_physical_campaign.py", (), "plan/audit a physical camera/IMU campaign"),
 )
 

@@ -24,6 +24,7 @@ OutputRole = Literal[
     "staging-bundle-and-machine-manifest",
     "observation-csv-and-machine-manifest",
     "calibration-artifact-and-import-manifest",
+    "evidence-manifest-and-verification-report",
 ]
 PolicyRole = Literal[
     "named-source-required-for-explicit-gates",
@@ -359,6 +360,21 @@ CAMERA_IMU_REPEATABILITY_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ..
 )
 
 
+CAMERA_IMU_PROMOTION_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="camera-imu",
+        name="promote",
+        module="bividi.calibration.camera_imu_provenance_command",
+        compatibility_tool="camera_imu_calibration_provenance.py",
+        output_role="evidence-manifest-and-verification-report",
+        policy_role="promotion-requires-manifest-and-evidence-policy",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
@@ -374,6 +390,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + CAMERA_IMU_SOLVER_COMMAND_CONTRACTS
     + CAMERA_IMU_TEMPORAL_COMMAND_CONTRACTS
     + CAMERA_IMU_REPEATABILITY_COMMAND_CONTRACTS
+    + CAMERA_IMU_PROMOTION_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}
