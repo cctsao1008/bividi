@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -144,7 +145,7 @@ void test_midpoint_is_overflow_safe() {
 }
 
 void test_explicit_start_and_end_references() {
-    for (const auto entry : {
+    for (const auto& entry : {
              std::pair{bividi::VioCameraTimeReference::exposure_start, std::uint64_t{1000}},
              std::pair{bividi::VioCameraTimeReference::exposure_end, std::uint64_t{1100}},
          }) {
