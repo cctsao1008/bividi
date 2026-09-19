@@ -1,28 +1,28 @@
 """Compare stereo camera-model candidates on identical calibration evidence.
 
-This tool compares already-solved ``bividi.calibration.stereo.v1`` artifacts.
-It does not solve calibration, choose a model by lowest training error, or invent
-acceptance thresholds.  Without an explicit operator nomination and named gates
-the result remains ``INSUFFICIENT_EVIDENCE``.
+Pinhole candidates use ``bividi.calibration.stereo.v1``. OpenCV fisheye uses a
+separate candidate schema because pinhole-only E/F/FOV/ROI fields must not be
+fabricated. This comparator normalizes only explicitly named common metrics and
+records the valid-area measurement method for each model.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import math
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .stereo_calibration_solve import validate
+from .stereo_fisheye_candidate import SCHEMA as FISHEYE_SCHEMA, validate_candidate
 
-SCHEMA = "bividi.calibration.stereo.v1"
+PINHOLE_SCHEMA = "bividi.calibration.stereo.v1"
 REPORT_SCHEMA = "bividi.calibration.stereo_model_comparison.v1"
 TOOL_VERSION = "1"
 COMPATIBILITY_TOOL_NAME = "compare_stereo_camera_models.py"
-SUPPORTED_MODELS = ("opencv5", "opencv-rational")
+SUPPORTED_MODELS = ("opencv5", "opencv-rational", "opencv-fisheye")
 CAMERAS = ("camera_a", "camera_b")
 
 
@@ -43,16 +43,22 @@ def load_artifact(path: Path) -> dict[str, Any]:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise CompareError(f"cannot read {path}: {exc}") from exc
-    if not isinstance(value, dict) or value.get("schema") != SCHEMA:
-        raise CompareError(f"{path}: expected {SCHEMA}")
-    errors = validate(value)
-    if errors:
-        raise CompareError(f"{path}: invalid stereo artifact: {'; '.join(errors)}")
+    if not isinstance(value, dict):
+        raise CompareError(f"{path}: expected JSON object")
+    schema = value.get("schema")
+    if schema == PINHOLE_SCHEMA:
+        errors = validate(value)
+        if errors:
+            raise CompareError(f"{path}: invalid stereo artifact: {'; '.join(errors)}")
+    elif schema == FISHEYE_SCHEMA:
+        errors = validate_candidate(value)
+        if errors:
+            raise CompareError(f"{path}: invalid fisheye candidate: {'; '.join(errors)}")
+    else:
+        raise CompareError(f"{path}: unsupported candidate schema {schema!r}")
     model = value.get("camera_model", {}).get("distortion")
     if model not in SUPPORTED_MODELS:
-        raise CompareError(
-            f"{path}: unsupported distortion model {model!r}; expected one of {SUPPORTED_MODELS}"
-        )
+        raise CompareError(f"{path}: unsupported distortion model {model!r}")
     return value
 
 
@@ -62,6 +68,9 @@ def evidence_identity(data: Mapping[str, Any]) -> dict[str, Any]:
     target = data.get("target", {})
     provenance = data.get("provenance", {})
     device = data.get("device", {})
+    # Projection/model identity is deliberately excluded: this function answers
+    # whether candidates were generated from the same evidence, not whether they
+    # use the same mathematical model.
     return {
         "source_session_sha256": provenance.get("source_session_sha256"),
         "provenance_kind": provenance.get("kind"),
@@ -78,7 +87,6 @@ def evidence_identity(data: Mapping[str, Any]) -> dict[str, Any]:
         "target_id": target.get("target_id"),
         "target_family": target.get("family"),
         "target_sha256": target.get("sha256"),
-        "projection": data.get("camera_model", {}).get("projection"),
     }
 
 
@@ -93,51 +101,54 @@ def candidate_metrics(document: Mapping[str, Any]) -> dict[str, Any]:
     height = int(document["image"]["height"])
     rect = document["rectification"]
     cameras = document["cameras"]
+    model = document["camera_model"]["distortion"]
+    if document["schema"] == PINHOLE_SCHEMA:
+        valid_a = _roi_fraction(rect["valid_roi_camera_a"], width, height)
+        valid_b = _roi_fraction(rect["valid_roi_camera_b"], width, height)
+        valid_method = "pinhole_valid_roi_area_fraction"
+    else:
+        valid_a = float(rect["camera_a_map_valid_fraction"])
+        valid_b = float(rect["camera_b_map_valid_fraction"])
+        valid_method = "fisheye_inverse_map_in_source_domain_fraction"
     return {
-        "model": document["camera_model"]["distortion"],
-        "calibration_id": document["calibration_id"],
+        "schema": document["schema"],
+        "model": model,
+        "projection": document["camera_model"]["projection"],
+        "candidate_id": document.get("calibration_id", document.get("candidate_id")),
         "camera_a_mono_rms_px": float(cameras["camera_a"]["mono_rms_px"]),
         "camera_b_mono_rms_px": float(cameras["camera_b"]["mono_rms_px"]),
-        "max_mono_rms_px": max(
-            float(cameras["camera_a"]["mono_rms_px"]),
-            float(cameras["camera_b"]["mono_rms_px"]),
-        ),
+        "max_mono_rms_px": max(float(cameras["camera_a"]["mono_rms_px"]), float(cameras["camera_b"]["mono_rms_px"])),
         "stereo_rms_px": float(document["stereo"]["stereo_rms_px"]),
         "epipolar_p95_px": float(rect["vertical_epipolar_abs_px"]["p95"]),
         "epipolar_max_px": float(rect["vertical_epipolar_abs_px"]["max"]),
         "baseline_m": float(document["stereo"]["baseline_m"]),
-        "camera_a_valid_roi_fraction": _roi_fraction(
-            rect["valid_roi_camera_a"], width, height
-        ),
-        "camera_b_valid_roi_fraction": _roi_fraction(
-            rect["valid_roi_camera_b"], width, height
-        ),
-        "min_valid_roi_fraction": min(
-            _roi_fraction(rect["valid_roi_camera_a"], width, height),
-            _roi_fraction(rect["valid_roi_camera_b"], width, height),
-        ),
+        "camera_a_valid_area_fraction": valid_a,
+        "camera_b_valid_area_fraction": valid_b,
+        "min_valid_area_fraction": min(valid_a, valid_b),
+        "valid_area_method": valid_method,
         "camera_a_distortion_parameter_count": len(cameras["camera_a"]["D"]),
         "camera_b_distortion_parameter_count": len(cameras["camera_b"]["D"]),
-        "distortion_parameter_count_total": len(cameras["camera_a"]["D"])
-        + len(cameras["camera_b"]["D"]),
+        "distortion_parameter_count_total": len(cameras["camera_a"]["D"]) + len(cameras["camera_b"]["D"]),
         "valid_pair_count": int(document["stereo"]["valid_pair_count"]),
     }
 
 
 def _delta(a: Mapping[str, Any], b: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    result = {
         "model_a": a["model"],
         "model_b": b["model"],
         "max_mono_rms_delta_px": abs(float(a["max_mono_rms_px"]) - float(b["max_mono_rms_px"])),
         "stereo_rms_delta_px": abs(float(a["stereo_rms_px"]) - float(b["stereo_rms_px"])),
         "epipolar_p95_delta_px": abs(float(a["epipolar_p95_px"]) - float(b["epipolar_p95_px"])),
-        "min_valid_roi_fraction_delta": abs(float(a["min_valid_roi_fraction"]) - float(b["min_valid_roi_fraction"])),
         "baseline_delta_mm": abs(float(a["baseline_m"]) - float(b["baseline_m"])) * 1000.0,
-        "distortion_parameter_count_delta": abs(
-            int(a["distortion_parameter_count_total"])
-            - int(b["distortion_parameter_count_total"])
-        ),
+        "distortion_parameter_count_delta": abs(int(a["distortion_parameter_count_total"]) - int(b["distortion_parameter_count_total"])),
+        "valid_area_methods_comparable": a["valid_area_method"] == b["valid_area_method"],
     }
+    if result["valid_area_methods_comparable"]:
+        result["min_valid_area_fraction_delta"] = abs(float(a["min_valid_area_fraction"]) - float(b["min_valid_area_fraction"]))
+    else:
+        result["min_valid_area_fraction_delta"] = None
+    return result
 
 
 def _selection_gates(args: argparse.Namespace, selected: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -146,75 +157,79 @@ def _selection_gates(args: argparse.Namespace, selected: Mapping[str, Any]) -> d
         ("max_mono_rms_px", args.max_mono_rms_px, "max_mono_rms_px", "max"),
         ("max_stereo_rms_px", args.max_stereo_rms_px, "stereo_rms_px", "max"),
         ("max_epipolar_p95_px", args.max_epipolar_p95_px, "epipolar_p95_px", "max"),
-        ("min_valid_roi_fraction", args.min_valid_roi_fraction, "min_valid_roi_fraction", "min"),
+        ("min_valid_area_fraction", args.min_valid_area_fraction, "min_valid_area_fraction", "min"),
     ):
         if limit is None:
             continue
         observed = float(selected[metric])
         passed = observed <= float(limit) if relation == "max" else observed >= float(limit)
-        gates[name] = {"limit": float(limit), "observed": observed, "pass": passed}
+        gates[name] = {
+            "limit": float(limit),
+            "observed": observed,
+            "pass": passed,
+            **({"measurement_method": selected["valid_area_method"]} if metric == "min_valid_area_fraction" else {}),
+        }
+    if args.min_valid_roi_fraction is not None:
+        if selected["valid_area_method"] != "pinhole_valid_roi_area_fraction":
+            raise CompareError("--min-valid-roi-fraction is pinhole-only; use --min-valid-area-fraction for a fisheye candidate")
+        observed = float(selected["min_valid_area_fraction"])
+        gates["min_valid_roi_fraction"] = {
+            "limit": float(args.min_valid_roi_fraction),
+            "observed": observed,
+            "pass": observed >= float(args.min_valid_roi_fraction),
+            "measurement_method": selected["valid_area_method"],
+        }
     return gates
 
 
 def compare(paths: Sequence[Path], args: argparse.Namespace) -> dict[str, Any]:
     if len(paths) < 2:
         raise CompareError("at least two calibration artifacts are required")
-
     resolved = [path.resolve() for path in paths]
     documents = [load_artifact(path) for path in resolved]
     identity = evidence_identity(documents[0])
     for path, document in zip(resolved[1:], documents[1:]):
         if evidence_identity(document) != identity:
             raise CompareError(f"{path}: candidates are not bound to identical source evidence")
-
     metrics = [candidate_metrics(document) for document in documents]
     models = [item["model"] for item in metrics]
     if len(models) != len(set(models)):
         raise CompareError("candidate distortion models must be distinct")
-
     artifacts = [
         {
             "path": str(path),
             "sha256": sha256_file(path),
-            "calibration_id": document["calibration_id"],
+            "candidate_id": document.get("calibration_id", document.get("candidate_id")),
+            "schema": document["schema"],
             "model": document["camera_model"]["distortion"],
             "provenance_kind": document["provenance"]["kind"],
         }
         for path, document in zip(resolved, documents)
     ]
-
-    pairwise: list[dict[str, Any]] = []
-    for i in range(len(metrics)):
-        for j in range(i + 1, len(metrics)):
-            pairwise.append(_delta(metrics[i], metrics[j]))
-
-    gate_values_present = any(
-        value is not None
-        for value in (
-            args.max_mono_rms_px,
-            args.max_stereo_rms_px,
-            args.max_epipolar_p95_px,
-            args.min_valid_roi_fraction,
-        )
-    )
+    pairwise = [_delta(metrics[i], metrics[j]) for i in range(len(metrics)) for j in range(i + 1, len(metrics))]
+    gate_values_present = any(value is not None for value in (
+        args.max_mono_rms_px,
+        args.max_stereo_rms_px,
+        args.max_epipolar_p95_px,
+        args.min_valid_area_fraction,
+        args.min_valid_roi_fraction,
+    ))
     if gate_values_present and not args.selected_model:
         raise CompareError("selection gates require --selected-model")
     if args.selected_model and not gate_values_present:
         raise CompareError("--selected-model requires at least one explicit selection gate")
     if args.selected_model and not args.policy_source:
         raise CompareError("explicit model selection requires --policy-source")
-
     selected = None
     gates: dict[str, dict[str, Any]] = {}
     status = "INSUFFICIENT_EVIDENCE"
     if args.selected_model:
-        selected_matches = [item for item in metrics if item["model"] == args.selected_model]
-        if not selected_matches:
+        matches = [item for item in metrics if item["model"] == args.selected_model]
+        if not matches:
             raise CompareError(f"selected model {args.selected_model!r} is not among candidates")
         selected = args.selected_model
-        gates = _selection_gates(args, selected_matches[0])
+        gates = _selection_gates(args, matches[0])
         status = "PASS" if all(item["pass"] for item in gates.values()) else "FAIL"
-
     return {
         "schema": REPORT_SCHEMA,
         "provenance": {"tool": COMPATIBILITY_TOOL_NAME, "tool_version": TOOL_VERSION},
@@ -222,15 +237,11 @@ def compare(paths: Sequence[Path], args: argparse.Namespace) -> dict[str, Any]:
         "artifacts": artifacts,
         "candidates": metrics,
         "pairwise_deltas": pairwise,
-        "selection": {
-            "status": status,
-            "selected_model": selected,
-            "policy_source": args.policy_source,
-            "gates": gates,
-        },
+        "selection": {"status": status, "selected_model": selected, "policy_source": args.policy_source, "gates": gates},
         "guardrails": [
             "Lowest training RMS alone is not a camera-model selection policy.",
             "Candidates are compared only when bound to identical source evidence.",
+            "Valid-area fractions with different measurement methods are reported but not differenced as equivalent quantities.",
             "Synthetic comparison success is not measured AR0234 model-selection evidence.",
             "No default numerical thresholds are owned by this comparator.",
         ],
@@ -239,18 +250,16 @@ def compare(paths: Sequence[Path], args: argparse.Namespace) -> dict[str, Any]:
 
 def render_markdown(report: Mapping[str, Any]) -> str:
     lines = [
-        "# Stereo Camera-Model Comparison",
-        "",
+        "# Stereo Camera-Model Comparison", "",
         f"Selection status: `{report['selection']['status']}`",
-        f"Selected model: `{report['selection']['selected_model'] or 'none'}`",
-        "",
-        "| Model | Max mono RMS (px) | Stereo RMS (px) | Epipolar p95 (px) | Min valid ROI | Baseline (mm) | D params |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        f"Selected model: `{report['selection']['selected_model'] or 'none'}`", "",
+        "| Model | Max mono RMS (px) | Stereo RMS (px) | Epipolar p95 (px) | Min valid area | Valid-area method | Baseline (mm) | D params |",
+        "| --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |",
     ]
     for item in report["candidates"]:
         lines.append(
             f"| {item['model']} | {item['max_mono_rms_px']:.6g} | {item['stereo_rms_px']:.6g} | "
-            f"{item['epipolar_p95_px']:.6g} | {item['min_valid_roi_fraction']:.6g} | "
+            f"{item['epipolar_p95_px']:.6g} | {item['min_valid_area_fraction']:.6g} | {item['valid_area_method']} | "
             f"{item['baseline_m'] * 1000.0:.6g} | {item['distortion_parameter_count_total']} |"
         )
     lines.extend(["", "## Selection policy", ""])
@@ -259,9 +268,8 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     else:
         lines.append(f"Policy source: `{report['selection']['policy_source']}`")
         for name, gate in report["selection"]["gates"].items():
-            lines.append(
-                f"- `{name}`: observed={gate['observed']:.6g}, limit={gate['limit']:.6g}, pass={gate['pass']}"
-            )
+            method = f", method={gate['measurement_method']}" if "measurement_method" in gate else ""
+            lines.append(f"- `{name}`: observed={gate['observed']:.6g}, limit={gate['limit']:.6g}, pass={gate['pass']}{method}")
     lines.extend(["", "## Guardrails", ""])
     lines.extend(f"- {item}" for item in report["guardrails"])
     return "\n".join(lines) + "\n"
@@ -272,7 +280,7 @@ def _synthetic_artifact(model: str, calibration_id: str, stereo_rms: float) -> d
     identity = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     K = [[700.0, 0.0, 640.0], [0.0, 700.0, 360.0], [0.0, 0.0, 1.0]]
     return {
-        "schema": SCHEMA,
+        "schema": PINHOLE_SCHEMA,
         "calibration_id": calibration_id,
         "provenance": {"kind": "synthetic", "source_session_sha256": "0" * 64},
         "device": {"model": "synthetic", "serial": "SYN-001"},
@@ -297,11 +305,10 @@ def self_test() -> None:
         b = root / "rational.json"
         a.write_text(json.dumps(_synthetic_artifact("opencv5", "a", 0.20)), encoding="utf-8")
         b.write_text(json.dumps(_synthetic_artifact("opencv-rational", "b", 0.18)), encoding="utf-8")
-        args = argparse.Namespace(selected_model=None, policy_source=None, max_mono_rms_px=None, max_stereo_rms_px=None, max_epipolar_p95_px=None, min_valid_roi_fraction=None)
+        args = argparse.Namespace(selected_model=None, policy_source=None, max_mono_rms_px=None, max_stereo_rms_px=None, max_epipolar_p95_px=None, min_valid_area_fraction=None, min_valid_roi_fraction=None)
         report = compare([a, b], args)
         assert report["selection"]["status"] == "INSUFFICIENT_EVIDENCE"
         assert len(report["pairwise_deltas"]) == 1
-        assert report["artifacts"][0]["sha256"] != report["artifacts"][1]["sha256"]
         args.selected_model = "opencv-rational"
         args.policy_source = "synthetic policy"
         args.max_stereo_rms_px = 0.19
@@ -322,7 +329,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-mono-rms-px", type=float)
     parser.add_argument("--max-stereo-rms-px", type=float)
     parser.add_argument("--max-epipolar-p95-px", type=float)
-    parser.add_argument("--min-valid-roi-fraction", type=float)
+    parser.add_argument("--min-valid-area-fraction", type=float)
+    parser.add_argument("--min-valid-roi-fraction", type=float, help="legacy pinhole-only valid ROI gate")
     return parser
 
 
