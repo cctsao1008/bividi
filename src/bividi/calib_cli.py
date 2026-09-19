@@ -174,7 +174,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="analyze AprilGrid/image-plane coverage",
         module="bividi.calibration.kalibr_target_coverage_command",
     ),
-    CalibrationCommand("camera-imu", "ros1-bag", "write_kalibr_rosbag.py", (), "write legacy ROS1 bag for upstream Kalibr"),
+    CalibrationCommand(
+        "camera-imu",
+        "ros1-bag",
+        None,
+        summary="write legacy ROS1 bag for upstream Kalibr",
+        module="bividi.calibration.kalibr_rosbag_command",
+    ),
     CalibrationCommand("camera-imu", "ros2-mcap", "write_ros2_calibration_mcap.py", (), "write ROS2/MCAP interoperability transport"),
     CalibrationCommand(
         "camera-imu",
