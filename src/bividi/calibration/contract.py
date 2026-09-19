@@ -375,6 +375,21 @@ CAMERA_IMU_PROMOTION_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] =
 )
 
 
+CAMERA_IMU_CAMPAIGN_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="camera-imu",
+        name="campaign",
+        module="bividi.calibration.camera_imu_campaign_command",
+        compatibility_tool="plan_camera_imu_physical_campaign.py",
+        output_role="orchestration-json-markdown",
+        policy_role="recorded-orchestration-metadata",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=None,
+    ),
+)
+
+
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
@@ -391,6 +406,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + CAMERA_IMU_TEMPORAL_COMMAND_CONTRACTS
     + CAMERA_IMU_REPEATABILITY_COMMAND_CONTRACTS
     + CAMERA_IMU_PROMOTION_COMMAND_CONTRACTS
+    + CAMERA_IMU_CAMPAIGN_COMMAND_CONTRACTS
 )
 
 _INDEX = {item.key: item for item in COMMAND_CONTRACTS}

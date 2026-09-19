@@ -211,7 +211,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="run camera/IMU evidence promotion gate",
         module="bividi.calibration.camera_imu_provenance_command",
     ),
-    CalibrationCommand("camera-imu", "campaign", "plan_camera_imu_physical_campaign.py", (), "plan/audit a physical camera/IMU campaign"),
+    CalibrationCommand(
+        "camera-imu",
+        "campaign",
+        None,
+        summary="plan/audit a physical camera/IMU campaign",
+        module="bividi.calibration.camera_imu_campaign_command",
+    ),
 )
 
 _COMMAND_INDEX = {(item.group, item.name): item for item in _COMMANDS}
