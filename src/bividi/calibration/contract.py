@@ -77,7 +77,7 @@ STEREO_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="stereo",
         name="geometry-review",
-        module="bividi.calibration.stereereo_geometry" if False else "bividi.calibration.stereo_geometry",
+        module="bividi.calibration.stereo_geometry",
         compatibility_tool="review_stereo_geometry.py",
         output_role="machine-evidence-json",
         policy_role="named-source-required-for-explicit-gates",
