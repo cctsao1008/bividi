@@ -20,5 +20,8 @@ target_compile_definitions(bividi-kimera-link-probe PRIVATE
     BIVIDI_KIMERA_VIO_TARGET_KIND="${BIVIDI_KIMERA_VIO_TARGET_KIND}"
 )
 
+enable_testing()
+add_test(NAME bividi_kimera_external_link_probe COMMAND bividi-kimera-link-probe)
+
 message(STATUS
     "Bividi Kimera external link probe: ${BIVIDI_KIMERA_VIO_TARGET} (${BIVIDI_KIMERA_VIO_TARGET_KIND})")
