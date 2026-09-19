@@ -21,6 +21,7 @@ OutputRole = Literal[
     "orchestration-json-markdown",
     "machine-evidence-json-and-human-markdown",
     "interop-yaml-and-machine-manifest",
+    "interop-transport-artifact",
     "staging-bundle-and-machine-manifest",
     "observation-csv-and-machine-manifest",
     "calibration-artifact-and-import-manifest",
@@ -41,6 +42,7 @@ PolicyRole = Literal[
     "measured-fields-required-synthetic-opt-in",
     "measured-evidence-required-synthetic-opt-in",
     "reviewed-external-runtime-no-acceptance-gate",
+    "external-runtime-transport-no-acceptance-gate",
     "candidate-import-no-acceptance-gate",
 ]
 
@@ -244,6 +246,21 @@ IMU_INTEROP_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
 )
 
 
+CAMERA_IMU_TRANSPORT_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="camera-imu",
+        name="ros1-bag",
+        module="bividi.calibration.kalibr_rosbag_command",
+        compatibility_tool="write_kalibr_rosbag.py",
+        output_role="interop-transport-artifact",
+        policy_role="external-runtime-transport-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+)
+
+
 CAMERA_IMU_STAGING_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     CalibrationCommandContract(
         group="camera-imu",
@@ -398,6 +415,7 @@ COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
     + IMU_CONFIG_COMMAND_CONTRACTS
     + IMU_PROVENANCE_COMMAND_CONTRACTS
     + IMU_INTEROP_COMMAND_CONTRACTS
+    + CAMERA_IMU_TRANSPORT_COMMAND_CONTRACTS
     + CAMERA_IMU_STAGING_COMMAND_CONTRACTS
     + CAMERA_IMU_EVIDENCE_COMMAND_CONTRACTS
     + CAMERA_IMU_TARGET_COMMAND_CONTRACTS
