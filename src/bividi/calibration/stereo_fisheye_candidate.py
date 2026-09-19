@@ -1,6 +1,6 @@
 """Evaluate an OpenCV fisheye stereo candidate without changing stereo.v1.
 
-The durable ``bividi.calibration.stereo.v1`` contract is pinhole-oriented.  This
+The durable ``bividi.calibration.stereo.v1`` contract is pinhole-oriented. This
 module therefore emits a separate candidate artifact for #61 model evaluation.
 It intentionally does not manufacture pinhole FOV, classical pixel-space F/E,
 or pinhole valid-ROI fields.
@@ -11,11 +11,10 @@ import argparse
 import json
 import math
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .stereo_calibration_common import CAMS, Error, cv, dist, load, now, save, sha, verified_session
+from .stereo_calibration_common import CAMS, Error, cv, dist, now, save, sha, verified_session
 from .stereo_calibration_solve import collect, mat, rot_ok, vec
 
 SCHEMA = "bividi.calibration.stereo_fisheye_candidate.v1"
@@ -150,12 +149,9 @@ def _map_valid_fraction(cv2, np, K, D, R, P, size) -> float:
     map_x, map_y = cv2.fisheye.initUndistortRectifyMap(K, D, R, P, size, cv2.CV_32FC1)
     width, height = size
     valid = (
-        np.isfinite(map_x)
-        & np.isfinite(map_y)
-        & (map_x >= 0.0)
-        & (map_x <= float(width - 1))
-        & (map_y >= 0.0)
-        & (map_y <= float(height - 1))
+        np.isfinite(map_x) & np.isfinite(map_y)
+        & (map_x >= 0.0) & (map_x <= float(width - 1))
+        & (map_y >= 0.0) & (map_y <= float(height - 1))
     )
     return float(np.mean(valid))
 
@@ -177,8 +173,7 @@ def solve_fisheye_core(cv2, np, size, mono, stereo):
         try:
             rms, K, D, rvecs, tvecs = cv2.fisheye.calibrate(
                 objects, images, size, K, D, None, None,
-                flags=mono_flags,
-                criteria=criteria,
+                flags=mono_flags, criteria=criteria,
             )
         except cv2.error as exc:
             raise CandidateError(f"{cam}: OpenCV fisheye calibration failed: {exc}") from exc
@@ -196,16 +191,17 @@ def solve_fisheye_core(cv2, np, size, mono, stereo):
     K1, D1 = mono_result["camera_a"][1], mono_result["camera_a"][2]
     K2, D2 = mono_result["camera_b"][1], mono_result["camera_b"][2]
     try:
-        stereo_rms, K1, D1, K2, D2, R, T = cv2.fisheye.stereoCalibrate(
+        stereo_output = cv2.fisheye.stereoCalibrate(
             objects, images_a, images_b, K1, D1, K2, D2, size,
-            flags=cv2.fisheye.CALIB_FIX_INTRINSIC,
-            criteria=criteria,
+            flags=cv2.fisheye.CALIB_FIX_INTRINSIC, criteria=criteria,
         )
+        # OpenCV Python bindings differ by release: some return only the seven
+        # documented stereo values, newer releases append per-view rvec/tvec
+        # tuples. The first seven values are stable.
+        stereo_rms, K1, D1, K2, D2, R, T = stereo_output[:7]
         R1, R2, P1, P2, Q = cv2.fisheye.stereoRectify(
             K1, D1, K2, D2, size, R, T,
-            flags=cv2.CALIB_ZERO_DISPARITY,
-            balance=0.0,
-            fov_scale=1.0,
+            flags=cv2.CALIB_ZERO_DISPARITY, balance=0.0, fov_scale=1.0,
         )
     except cv2.error as exc:
         raise CandidateError(f"OpenCV fisheye stereo calibration failed: {exc}") from exc
@@ -215,15 +211,9 @@ def solve_fisheye_core(cv2, np, size, mono, stereo):
         aa = cv2.fisheye.undistortPoints(camera_a, K1, D1, R=R1, P=P1).reshape(-1, 2)
         bb = cv2.fisheye.undistortPoints(camera_b, K2, D2, R=R2, P=P2).reshape(-1, 2)
         residuals.extend(abs(float(y_a) - float(y_b)) for y_a, y_b in zip(aa[:, 1], bb[:, 1]))
-
     valid_a = _map_valid_fraction(cv2, np, K1, D1, R1, P1, size)
     valid_b = _map_valid_fraction(cv2, np, K2, D2, R2, P2, size)
-    return (
-        mono_result,
-        (float(stereo_rms), K1, D1, K2, D2, R, T),
-        (R1, R2, P1, P2, Q, valid_a, valid_b),
-        residuals,
-    )
+    return mono_result, (float(stereo_rms), K1, D1, K2, D2, R, T), (R1, R2, P1, P2, Q, valid_a, valid_b), residuals
 
 
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
@@ -234,9 +224,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         raise CandidateError("native fisheye evaluation currently supports ChArUco")
     size = (int(session["capture"]["width"]), int(session["capture"]["height"]))
     mono, stereo = collect(session, session_path, target, pairs, cv2, np)
-    mono_result, stereo_result, rectification_result, residuals = solve_fisheye_core(
-        cv2, np, size, mono, stereo
-    )
+    mono_result, stereo_result, rectification_result, residuals = solve_fisheye_core(cv2, np, size, mono, stereo)
     stereo_rms, K1, D1, K2, D2, R, T = stereo_result
     R1, R2, P1, P2, Q, valid_a, valid_b = rectification_result
     artifact = {
@@ -254,24 +242,11 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "device": session["device"],
         "capture": session["capture"],
         "image": {"width": size[0], "height": size[1]},
-        "target": {
-            "target_id": target["target_id"],
-            "family": target["family"],
-            "path": str(target_path),
-            "sha256": sha(target_path),
-        },
+        "target": {"target_id": target["target_id"], "family": target["family"], "path": str(target_path), "sha256": sha(target_path)},
         "camera_model": dict(MODEL),
         "cameras": {
-            "camera_a": {
-                "K": mat(K1), "D": vec(D1),
-                "mono_rms_px": mono_result["camera_a"][0],
-                "per_view_reprojection_rms_px": mono_result["camera_a"][3],
-            },
-            "camera_b": {
-                "K": mat(K2), "D": vec(D2),
-                "mono_rms_px": mono_result["camera_b"][0],
-                "per_view_reprojection_rms_px": mono_result["camera_b"][3],
-            },
+            "camera_a": {"K": mat(K1), "D": vec(D1), "mono_rms_px": mono_result["camera_a"][0], "per_view_reprojection_rms_px": mono_result["camera_a"][3]},
+            "camera_b": {"K": mat(K2), "D": vec(D2), "mono_rms_px": mono_result["camera_b"][0], "per_view_reprojection_rms_px": mono_result["camera_b"][3]},
         },
         "stereo": {
             "frame_convention": "R/T transform points from camera_a into camera_b",
@@ -301,8 +276,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _synthetic_core_fixture(cv2, np):
-    width, height = 1280, 720
-    size = (width, height)
+    size = (1280, 720)
     K = np.asarray([[620.0, 0.0, 640.0], [0.0, 618.0, 360.0], [0.0, 0.0, 1.0]], np.float64)
     D = np.asarray([[-0.03], [0.004], [-0.0005], [0.00008]], np.float64)
     baseline = 0.08
@@ -312,15 +286,15 @@ def _synthetic_core_fixture(cv2, np):
     for i in range(12):
         rvec = np.asarray([[0.04 * math.sin(i * 0.7)], [0.05 * math.cos(i * 0.5)], [0.025 * math.sin(i * 0.3)]], np.float64)
         tvec_a = np.asarray([[-0.12 + 0.02 * (i % 6)], [-0.07 + 0.025 * (i % 5)], [0.75 + 0.04 * (i % 4)]], np.float64)
-        R_a, _ = cv2.Rodrigues(rvec)
+        rotation_a, _ = cv2.Rodrigues(rvec)
         tvec_b = tvec_a + np.asarray([[-baseline], [0.0], [0.0]], np.float64)
-        rvec_b, _ = cv2.Rodrigues(R_a)
-        pa, _ = cv2.fisheye.projectPoints(obj, rvec, tvec_a, K, D)
-        pb, _ = cv2.fisheye.projectPoints(obj, rvec_b, tvec_b, K, D)
-        for camera, points in (("camera_a", pa), ("camera_b", pb)):
+        rvec_b, _ = cv2.Rodrigues(rotation_a)
+        camera_a, _ = cv2.fisheye.projectPoints(obj, rvec, tvec_a, K, D)
+        camera_b, _ = cv2.fisheye.projectPoints(obj, rvec_b, tvec_b, K, D)
+        for camera, points in (("camera_a", camera_a), ("camera_b", camera_b)):
             mono[camera]["o"].append(obj.reshape(-1, 3).astype(np.float32))
             mono[camera]["i"].append(points.astype(np.float32))
-        stereo.append((obj.reshape(-1, 3).astype(np.float32), pa.astype(np.float32), pb.astype(np.float32)))
+        stereo.append((obj.reshape(-1, 3).astype(np.float32), camera_a.astype(np.float32), camera_b.astype(np.float32)))
     return size, mono, stereo, baseline
 
 
@@ -339,6 +313,8 @@ def self_test_opencv() -> None:
 
 
 def self_test() -> None:
+    identity = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    K = [[400.0, 0.0, 320.0], [0.0, 400.0, 240.0], [0.0, 0.0, 1.0]]
     fixture = {
         "schema": SCHEMA,
         "candidate_id": "synthetic-contract",
@@ -349,11 +325,18 @@ def self_test() -> None:
         "target": {"target_id": "t", "family": "charuco", "sha256": "1" * 64},
         "camera_model": dict(MODEL),
         "cameras": {
-            "camera_a": {"K": [[400.0, 0.0, 320.0], [0.0, 400.0, 240.0], [0.0, 0.0, 1.0]], "D": [0.0, 0.0, 0.0, 0.0], "mono_rms_px": 0.1, "per_view_reprojection_rms_px": [0.1, 0.1, 0.1]},
-            "camera_b": {"K": [[400.0, 0.0, 320.0], [0.0, 400.0, 240.0], [0.0, 0.0, 1.0]], "D": [0.0, 0.0, 0.0, 0.0], "mono_rms_px": 0.1, "per_view_reprojection_rms_px": [0.1, 0.1, 0.1]},
+            "camera_a": {"K": K, "D": [0.0] * 4, "mono_rms_px": 0.1, "per_view_reprojection_rms_px": [0.1] * 3},
+            "camera_b": {"K": K, "D": [0.0] * 4, "mono_rms_px": 0.1, "per_view_reprojection_rms_px": [0.1] * 3},
         },
-        "stereo": {"R_camera_b_from_camera_a": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], "T_camera_b_from_camera_a_m": [-0.08, 0.0, 0.0], "baseline_m": 0.08, "stereo_rms_px": 0.1, "valid_pair_count": 3},
-        "rectification": {"R1": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], "R2": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], "P1": [[400.0, 0.0, 320.0, 0.0], [0.0, 400.0, 240.0, 0.0], [0.0, 0.0, 1.0, 0.0]], "P2": [[400.0, 0.0, 320.0, -32.0], [0.0, 400.0, 240.0, 0.0], [0.0, 0.0, 1.0, 0.0]], "Q": [[1.0, 0.0, 0.0, -320.0], [0.0, 1.0, 0.0, -240.0], [0.0, 0.0, 0.0, 400.0], [0.0, 0.0, 12.5, 0.0]], "camera_a_map_valid_fraction": 0.9, "camera_b_map_valid_fraction": 0.9, "vertical_epipolar_abs_px": {"count": 3, "min": 0.0, "max": 0.1, "mean": 0.05, "median": 0.05, "p95": 0.095}},
+        "stereo": {"R_camera_b_from_camera_a": identity, "T_camera_b_from_camera_a_m": [-0.08, 0.0, 0.0], "baseline_m": 0.08, "stereo_rms_px": 0.1, "valid_pair_count": 3},
+        "rectification": {
+            "R1": identity, "R2": identity,
+            "P1": [[400.0, 0.0, 320.0, 0.0], [0.0, 400.0, 240.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
+            "P2": [[400.0, 0.0, 320.0, -32.0], [0.0, 400.0, 240.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
+            "Q": [[1.0, 0.0, 0.0, -320.0], [0.0, 1.0, 0.0, -240.0], [0.0, 0.0, 0.0, 400.0], [0.0, 0.0, 12.5, 0.0]],
+            "camera_a_map_valid_fraction": 0.9, "camera_b_map_valid_fraction": 0.9,
+            "vertical_epipolar_abs_px": {"count": 3, "min": 0.0, "max": 0.1, "mean": 0.05, "median": 0.05, "p95": 0.095},
+        },
     }
     assert not validate_candidate(fixture), validate_candidate(fixture)
     broken = json.loads(json.dumps(fixture))
