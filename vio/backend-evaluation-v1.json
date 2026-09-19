@@ -1,0 +1,303 @@
+{
+  "schema": "bividi.vio.backend_evaluation.v1",
+  "review_id": "vio-backend-review-2026-09-19",
+  "review_date": "2026-09-19",
+  "bividi_boundary": {
+    "parent_issue": 46,
+    "adapter_issue": 135,
+    "interface": "bividi::VioBackend",
+    "input": "bividi::VioPacket",
+    "output": "bividi::PoseObservation"
+  },
+  "project_license_context": {
+    "bividi_repository_license_declared": false,
+    "copyleft_integration_decision": "not_made",
+    "note": "This artifact records upstream license facts; it is not legal advice."
+  },
+  "decision": {
+    "adoption_status": "NOT_ADOPTED",
+    "selected_backend": null,
+    "spike_candidate": "kimera-vio",
+    "spike_scope": "Linux-only pinned offline integration spike behind bividi::VioBackend; no product adoption claim.",
+    "rationale": [
+      "Kimera-VIO documents stereo+IMU operation and builds a C++17 library independent of its separate ROS wrapper.",
+      "Its upstream license is BSD-2-Clause, reducing copyleft coupling relative to the reviewed GPL candidates.",
+      "Windows support is unverified, so the spike is deliberately Linux-only until feasibility is measured.",
+      "Basalt remains a strong alternate permissive candidate but its current CMake explicitly warns that only Linux and macOS are supported."
+    ]
+  },
+  "adoption_gates": {
+    "license_distribution_decision": "OPEN",
+    "calibration_mapping_8_47": "OPEN",
+    "timestamp_reset_mapping_135": "OPEN",
+    "backend_adapter_conformance": "OPEN",
+    "pinned_linux_build_offline_run": "OPEN",
+    "windows_feasibility": "OPEN",
+    "cpu_init_recovery_rate_characterization": "OPEN",
+    "measured_ar0234_35_8_47": "BLOCKED_ON_HARDWARE"
+  },
+  "candidates": [
+    {
+      "id": "kimera-vio",
+      "repository": "MIT-SPARK/Kimera-VIO",
+      "source_kind": "upstream-github",
+      "revision": "ce8c59b7b273ab5ac29db7e5572e1623760e19c7",
+      "revision_date": "2025-02-10",
+      "license": {
+        "spdx": "BSD-2-Clause",
+        "class": "permissive",
+        "third_party_license_review": "required"
+      },
+      "capabilities": {
+        "stereo_imu": "documented",
+        "ros_free_library": "documented",
+        "camera_models": ["pinhole", "omni"],
+        "online_camera_imu_extrinsic": "unverified",
+        "online_camera_imu_time_offset": "unverified"
+      },
+      "build": {
+        "cpp_standard": "C++17",
+        "major_dependencies": ["GTSAM", "GTSAM_UNSTABLE", "OpenCV", "OpenGV", "DBoW2", "Kimera-RPGO", "glog", "gflags"],
+        "linux": {"status": "verified", "basis": "README documents tested Ubuntu 20.04"},
+        "windows": {"status": "unverified", "basis": "No Windows support claim was found in the reviewed README/CMake evidence."},
+        "macos": {"status": "partial", "basis": "CMake contains Apple-specific handling, but the reviewed README states tested Ubuntu 20.04."}
+      },
+      "integration": {
+        "reset_reinitialize_api": "unreviewed",
+        "tracking_state_api": "unreviewed",
+        "timestamp_mapping": "unreviewed",
+        "bividi_calibration_mapping": "unreviewed",
+        "cpu_runtime": "upstream_example_only"
+      },
+      "disposition": "spike_candidate",
+      "blockers": [
+        "third-party dependency license closure not reviewed",
+        "Windows feasibility unverified",
+        "#8/#47 calibration mapping not implemented",
+        "#135 reset/timestamp mapping not implemented",
+        "no Bividi-host CPU/runtime characterization"
+      ],
+      "evidence": [
+        {
+          "url": "https://github.com/MIT-SPARK/Kimera-VIO/blob/ce8c59b7b273ab5ac29db7e5572e1623760e19c7/README.md",
+          "claims": ["stereo+IMU VIO", "tested Ubuntu 20.04", "major dependencies", "pinhole/omni camera models"]
+        },
+        {
+          "url": "https://github.com/MIT-SPARK/Kimera-VIO/blob/ce8c59b7b273ab5ac29db7e5572e1623760e19c7/CMakeLists.txt",
+          "claims": ["C++17", "shared library target", "major dependency linkage"]
+        },
+        {
+          "url": "https://github.com/MIT-SPARK/Kimera-VIO/blob/ce8c59b7b273ab5ac29db7e5572e1623760e19c7/LICENSE.BSD",
+          "claims": ["BSD-2-Clause license"]
+        }
+      ]
+    },
+    {
+      "id": "basalt",
+      "repository": "VladyslavUsenko/basalt",
+      "source_kind": "github-mirror-of-gitlab-upstream",
+      "revision": "0f3b2b52c807f70ff4e2973ce253c73329eea7bc",
+      "revision_date": "2026-03-22",
+      "license": {
+        "spdx": "BSD-3-Clause",
+        "class": "permissive",
+        "third_party_license_review": "required"
+      },
+      "capabilities": {
+        "stereo_imu": "documented",
+        "ros_free_library": "documented",
+        "camera_models": ["upstream calibration model family; exact #8 mapping unreviewed"],
+        "online_camera_imu_extrinsic": "calibration tooling documented",
+        "online_camera_imu_time_offset": "calibration tooling documented"
+      },
+      "build": {
+        "cpp_standard": "C++17",
+        "major_dependencies": ["Eigen3", "TBB", "OpenCV", "Boost", "lz4", "fmt", "CLI11", "nlohmann-json", "OpenGV", "rosbag", "Pangolin", "basalt-headers"],
+        "linux": {"status": "verified", "basis": "README documents Ubuntu release/source installation."},
+        "windows": {"status": "unsupported", "basis": "Current CMake warns: Only Linux and macOS are currently supported."},
+        "macos": {"status": "verified", "basis": "README documents macOS build/package flow."}
+      },
+      "integration": {
+        "reset_reinitialize_api": "unreviewed",
+        "tracking_state_api": "unreviewed",
+        "timestamp_mapping": "unreviewed",
+        "bividi_calibration_mapping": "unreviewed",
+        "cpu_runtime": "upstream_example_only"
+      },
+      "disposition": "shortlist",
+      "blockers": [
+        "third-party dependency license closure not reviewed",
+        "upstream explicitly lacks Windows support",
+        "#8/#47 calibration mapping not implemented",
+        "#135 reset/timestamp mapping not implemented",
+        "no Bividi-host CPU/runtime characterization"
+      ],
+      "evidence": [
+        {
+          "url": "https://github.com/VladyslavUsenko/basalt/blob/0f3b2b52c807f70ff4e2973ce253c73329eea7bc/README.md",
+          "claims": ["VIO/mapping/calibration", "BSD-3-Clause", "Linux/macOS source installation"]
+        },
+        {
+          "url": "https://github.com/VladyslavUsenko/basalt/blob/0f3b2b52c807f70ff4e2973ce253c73329eea7bc/CMakeLists.txt",
+          "claims": ["C++17", "shared/static library", "Linux/macOS-only warning", "major dependencies"]
+        },
+        {
+          "url": "https://github.com/VladyslavUsenko/basalt/blob/0f3b2b52c807f70ff4e2973ce253c73329eea7bc/vcpkg.json",
+          "claims": ["vcpkg dependency closure"]
+        }
+      ]
+    },
+    {
+      "id": "openvins",
+      "repository": "rpng/open_vins",
+      "source_kind": "upstream-github",
+      "revision": "69488123ed9362dd44b6f28e7f4680abbff1442b",
+      "revision_date": "2025-11-30",
+      "license": {
+        "spdx": "GPL-3.0",
+        "class": "strong-copyleft",
+        "third_party_license_review": "required"
+      },
+      "capabilities": {
+        "stereo_imu": "documented",
+        "ros_free_library": "documented",
+        "camera_models": ["upstream camera classes; exact #8 mapping unreviewed"],
+        "online_camera_imu_extrinsic": "documented",
+        "online_camera_imu_time_offset": "documented"
+      },
+      "build": {
+        "cpp_standard": "C++14",
+        "major_dependencies": ["Eigen3", "OpenCV", "Boost", "Ceres"],
+        "linux": {"status": "verified", "basis": "ROS-free GitHub workflow builds on ubuntu-latest."},
+        "windows": {"status": "unverified", "basis": "No Windows build is present in the reviewed ROS-free workflow."},
+        "macos": {"status": "unverified", "basis": "Not established by the reviewed evidence."}
+      },
+      "integration": {
+        "reset_reinitialize_api": "unreviewed",
+        "tracking_state_api": "unreviewed",
+        "timestamp_mapping": "unreviewed",
+        "bividi_calibration_mapping": "unreviewed",
+        "cpu_runtime": "unreviewed"
+      },
+      "disposition": "reference_only",
+      "blockers": [
+        "GPL-3.0 copyleft/project-license decision not made",
+        "Windows feasibility unverified",
+        "#8/#47 mapping and Bividi adapter conformance not implemented"
+      ],
+      "evidence": [
+        {
+          "url": "https://github.com/rpng/open_vins/blob/69488123ed9362dd44b6f28e7f4680abbff1442b/ReadMe.md",
+          "claims": ["synchronized stereo/binocular support", "camera-IMU extrinsic/time-offset calibration", "GPL-3.0"]
+        },
+        {
+          "url": "https://github.com/rpng/open_vins/blob/69488123ed9362dd44b6f28e7f4680abbff1442b/ov_msckf/CMakeLists.txt",
+          "claims": ["C++14", "ROS can be disabled", "Eigen/OpenCV/Boost/Ceres dependencies"]
+        },
+        {
+          "url": "https://github.com/rpng/open_vins/blob/69488123ed9362dd44b6f28e7f4680abbff1442b/.github/workflows/build.yml",
+          "claims": ["ROS-free Ubuntu CI"]
+        }
+      ]
+    },
+    {
+      "id": "vins-fusion",
+      "repository": "HKUST-Aerial-Robotics/VINS-Fusion",
+      "source_kind": "upstream-github",
+      "revision": "be55a937a57436548ddfb1bd324bc1e9a9e828e0",
+      "revision_date": "2021-07-26",
+      "license": {
+        "spdx": "GPL-3.0",
+        "class": "strong-copyleft",
+        "third_party_license_review": "required"
+      },
+      "capabilities": {
+        "stereo_imu": "documented",
+        "ros_free_library": "not_documented",
+        "camera_models": ["pinhole", "mei", "equidistant"],
+        "online_camera_imu_extrinsic": "documented",
+        "online_camera_imu_time_offset": "documented"
+      },
+      "build": {
+        "cpp_standard": "unreviewed",
+        "major_dependencies": ["ROS/catkin", "Ceres", "DBoW2", "camodocal", "GeographicLib"],
+        "linux": {"status": "verified", "basis": "README documents Ubuntu 16.04/18.04 with ROS Kinetic/Melodic."},
+        "windows": {"status": "unverified", "basis": "No Windows support is documented in the reviewed README."},
+        "macos": {"status": "unverified", "basis": "Not established by the reviewed evidence."}
+      },
+      "integration": {
+        "reset_reinitialize_api": "unreviewed",
+        "tracking_state_api": "unreviewed",
+        "timestamp_mapping": "unreviewed",
+        "bividi_calibration_mapping": "unreviewed",
+        "cpu_runtime": "unreviewed"
+      },
+      "disposition": "reference_only",
+      "blockers": [
+        "GPL-3.0 copyleft/project-license decision not made",
+        "ROS/catkin is the documented primary build path",
+        "pinned master revision is from 2021",
+        "Windows feasibility unverified"
+      ],
+      "evidence": [
+        {
+          "url": "https://github.com/HKUST-Aerial-Robotics/VINS-Fusion/blob/be55a937a57436548ddfb1bd324bc1e9a9e828e0/README.md",
+          "claims": ["stereo+IMU", "online spatial/temporal calibration", "Ubuntu+ROS prerequisites", "camera models", "GPLv3"]
+        }
+      ]
+    },
+    {
+      "id": "orb-slam3",
+      "repository": "UZ-SLAMLab/ORB_SLAM3",
+      "source_kind": "upstream-github",
+      "revision": "4452a3c4ab75b1cde34e5505a36ec3f9edcdc4c4",
+      "revision_date": "2022-02-10",
+      "license": {
+        "spdx": "GPL-3.0",
+        "class": "strong-copyleft",
+        "third_party_license_review": "required"
+      },
+      "capabilities": {
+        "stereo_imu": "documented",
+        "ros_free_library": "documented",
+        "camera_models": ["pinhole", "fisheye"],
+        "online_camera_imu_extrinsic": "unreviewed",
+        "online_camera_imu_time_offset": "unreviewed"
+      },
+      "build": {
+        "cpp_standard": "C++11",
+        "major_dependencies": ["Pangolin", "OpenCV", "Eigen3", "DBoW2", "g2o"],
+        "linux": {"status": "verified", "basis": "README documents tested Ubuntu 16.04/18.04."},
+        "windows": {"status": "unverified", "basis": "README says other platforms should be easy but does not verify Windows."},
+        "macos": {"status": "unverified", "basis": "Not established by the reviewed evidence."}
+      },
+      "integration": {
+        "reset_reinitialize_api": "unreviewed",
+        "tracking_state_api": "unreviewed",
+        "timestamp_mapping": "unreviewed",
+        "bividi_calibration_mapping": "unreviewed",
+        "cpu_runtime": "upstream_requirement_only"
+      },
+      "disposition": "reference_only",
+      "blockers": [
+        "GPL-3.0 copyleft/project-license decision not made",
+        "full SLAM/multi-map scope is broader than #46 VIO-only first phase",
+        "Windows feasibility unverified",
+        "pinned master revision is from 2022"
+      ],
+      "evidence": [
+        {
+          "url": "https://github.com/UZ-SLAMLab/ORB_SLAM3/blob/4452a3c4ab75b1cde34e5505a36ec3f9edcdc4c4/README.md",
+          "claims": ["stereo-inertial support", "pinhole/fisheye", "GPLv3", "C++11", "Ubuntu tests", "major dependencies", "libORB_SLAM3.so"]
+        }
+      ]
+    }
+  ],
+  "guardrails": [
+    "No backend is adopted by this review artifact.",
+    "The spike candidate is an integration experiment, not a production selection.",
+    "Upstream license facts are recorded for engineering governance and are not legal advice.",
+    "No backend may invent camera/IMU calibration, time offset, frame convention, or host-time fallback outside #8/#47/#135 evidence.",
+    "Offline or synthetic success is not measured AR0234 VIO accuracy."
+  ]
+}
