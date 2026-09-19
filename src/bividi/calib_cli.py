@@ -88,6 +88,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
     ),
     CalibrationCommand(
         "stereo",
+        "model-compare",
+        None,
+        summary="compare camera-model candidates on identical evidence",
+        module="bividi.calibration.stereo_model_compare",
+    ),
+    CalibrationCommand(
+        "stereo",
         "promote",
         None,
         summary="run stereo evidence/promotion gate",
