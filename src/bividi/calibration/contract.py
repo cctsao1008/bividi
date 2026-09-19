@@ -27,6 +27,8 @@ OutputRole = Literal[
     "observation-csv-and-machine-manifest",
     "calibration-artifact-and-import-manifest",
     "evidence-manifest-and-verification-report",
+    "validation-result",
+    "inspection-image",
 ]
 PolicyRole = Literal[
     "named-source-required-for-explicit-gates",
@@ -40,6 +42,7 @@ PolicyRole = Literal[
     "explicit-operator-gates-no-default-thresholds",
     "explicit-operator-gates-with-structural-fail-no-default-thresholds",
     "structural-provenance-gate-no-numerical-policy",
+    "structural-validation-no-acceptance-gate",
     "measured-fields-required-synthetic-opt-in",
     "measured-evidence-required-synthetic-opt-in",
     "reviewed-external-runtime-no-acceptance-gate",
@@ -63,6 +66,87 @@ class CalibrationCommandContract:
     @property
     def key(self) -> tuple[str, str]:
         return (self.group, self.name)
+
+
+STEREO_WORKBENCH_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
+    CalibrationCommandContract(
+        group="stereo",
+        name="target",
+        module="bividi.calibration.stereo_workbench_command",
+        compatibility_tool="stereo_calibration_workbench.py",
+        output_role="machine-evidence-json",
+        policy_role="recorded-orchestration-metadata",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=None,
+    ),
+    CalibrationCommandContract(
+        group="stereo",
+        name="session",
+        module="bividi.calibration.stereo_workbench_command",
+        compatibility_tool="stereo_calibration_workbench.py",
+        output_role="machine-evidence-json",
+        policy_role="recorded-orchestration-metadata",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=None,
+    ),
+    CalibrationCommandContract(
+        group="stereo",
+        name="session-recorder",
+        module="bividi.calibration.stereo_workbench_command",
+        compatibility_tool="stereo_calibration_workbench.py",
+        output_role="machine-evidence-json",
+        policy_role="recorded-orchestration-metadata",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=None,
+    ),
+    CalibrationCommandContract(
+        group="stereo",
+        name="inspect",
+        module="bividi.calibration.stereo_workbench_command",
+        compatibility_tool="stereo_calibration_workbench.py",
+        output_role="machine-evidence-json",
+        policy_role="explicit-operator-gates-no-default-thresholds",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
+    ),
+    CalibrationCommandContract(
+        group="stereo",
+        name="solve",
+        module="bividi.calibration.stereo_workbench_command",
+        compatibility_tool="stereo_calibration_workbench.py",
+        output_role="machine-evidence-json",
+        policy_role="explicit-operator-gates-no-default-thresholds",
+        emits_versioned_provenance=True,
+        tool_version="1",
+        evaluated_fail_exit=EXIT_EVALUATED_FAIL,
+    ),
+    CalibrationCommandContract(
+        group="stereo",
+        name="validate",
+        module="bividi.calibration.stereo_workbench_command",
+        compatibility_tool="stereo_calibration_workbench.py",
+        output_role="validation-result",
+        policy_role="structural-validation-no-acceptance-gate",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+    CalibrationCommandContract(
+        group="stereo",
+        name="rectify",
+        module="bividi.calibration.stereo_workbench_command",
+        compatibility_tool="stereo_calibration_workbench.py",
+        output_role="inspection-image",
+        policy_role="presentation-only",
+        emits_versioned_provenance=False,
+        tool_version=None,
+        evaluated_fail_exit=None,
+    ),
+)
 
 
 STEREO_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
@@ -420,7 +504,8 @@ CAMERA_IMU_CAMPAIGN_COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = 
 
 
 COMMAND_CONTRACTS: tuple[CalibrationCommandContract, ...] = (
-    STEREO_COMMAND_CONTRACTS
+    STEREO_WORKBENCH_COMMAND_CONTRACTS
+    + STEREO_COMMAND_CONTRACTS
     + IMU_COMMAND_CONTRACTS
     + IMU_NOISE_COMMAND_CONTRACTS
     + IMU_AXIS_COMMAND_CONTRACTS

@@ -38,24 +38,25 @@ class CalibrationCliTests(unittest.TestCase):
             (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
             self.assertEqual(calib_cli.find_source_root(root), root.resolve())
 
-    def test_build_invocation_preserves_tool_arguments(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "tools").mkdir()
-            (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
-            script = root / "tools" / "stereo_calibration_workbench.py"
-            script.write_text("print('fixture')\n", encoding="utf-8")
-
-            invocation = calib_cli.build_invocation(
-                "stereo",
+    def test_build_invocation_preserves_workbench_prefix_and_tool_arguments(self):
+        invocation = calib_cli.build_invocation(
+            "stereo",
+            "solve",
+            ["session.json", "--output", "calibration.json"],
+            source_root=Path("/definitely/not/a/bividi/checkout"),
+        )
+        self.assertEqual(
+            invocation,
+            [
+                sys.executable,
+                "-m",
+                "bividi.calibration.stereo_workbench_command",
                 "solve",
-                ["session.json", "--output", "calibration.json"],
-                source_root=root,
-            )
-
-            self.assertEqual(invocation[0], sys.executable)
-            self.assertEqual(Path(invocation[1]), script.resolve())
-            self.assertEqual(invocation[2:], ["solve", "session.json", "--output", "calibration.json"])
+                "session.json",
+                "--output",
+                "calibration.json",
+            ],
+        )
 
     def test_migrated_modules_do_not_require_source_checkout(self):
         for command, module in _MIGRATED_STEREO_MODULES.items():
@@ -112,24 +113,10 @@ class CalibrationCliTests(unittest.TestCase):
         self.assertIn("stereo", output)
         self.assertIn("camera-imu", output)
 
-    def test_dry_run_does_not_execute_remaining_legacy_route(self):
-        legacy = next(item for item in calib_cli.commands() if item.script is not None)
-        assert legacy.script is not None
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "tools").mkdir()
-            (root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
-            script = root / "tools" / legacy.script
-            script.write_text("raise RuntimeError('must not execute')\n", encoding="utf-8")
-
-            stdout = io.StringIO()
-            with contextlib.redirect_stdout(stdout):
-                rc = calib_cli.main(
-                    ["--source-root", str(root), "--dry-run", legacy.group, legacy.name, "fixture-input"]
-                )
-            self.assertEqual(rc, 0)
-            self.assertIn(legacy.script, stdout.getvalue())
-            self.assertIn("fixture-input", stdout.getvalue())
+    def test_no_calibration_routes_remain_source_tree_delegated(self):
+        self.assertTrue(calib_cli.commands())
+        self.assertTrue(all(item.script is None for item in calib_cli.commands()))
+        self.assertTrue(all(item.module is not None for item in calib_cli.commands()))
 
     def test_migrated_module_dry_runs_are_source_tree_independent(self):
         for command, module in _MIGRATED_STEREO_MODULES.items():

@@ -112,8 +112,13 @@ class CalibrationCommandContractTests(unittest.TestCase):
     def test_contract_lookup_is_explicit(self):
         item = contract.contract_for("stereo", "promote")
         self.assertEqual(item.module, "bividi.calibration.stereo_provenance")
+
+        solve = contract.contract_for("stereo", "solve")
+        self.assertEqual(solve.module, "bividi.calibration.stereo_workbench_command")
+        self.assertEqual(solve.evaluated_fail_exit, contract.EXIT_EVALUATED_FAIL)
+
         with self.assertRaises(KeyError):
-            contract.contract_for("stereo", "solve")
+            contract.contract_for("stereo", "not-a-command")
 
 
 if __name__ == "__main__":

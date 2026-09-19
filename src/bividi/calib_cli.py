@@ -37,13 +37,34 @@ class CalibrationCommand:
 
 _COMMANDS: tuple[CalibrationCommand, ...] = (
     # Stereo / #8
-    CalibrationCommand("stereo", "target", "stereo_calibration_workbench.py", ("target",), "generate a calibration target contract/render"),
-    CalibrationCommand("stereo", "session", "stereo_calibration_workbench.py", ("session",), "build a paired stereo session manifest"),
-    CalibrationCommand("stereo", "session-recorder", "stereo_calibration_workbench.py", ("session-recorder",), "import a recorder-backed stereo session"),
-    CalibrationCommand("stereo", "inspect", "stereo_calibration_workbench.py", ("inspect",), "inspect target detection and dataset quality"),
-    CalibrationCommand("stereo", "solve", "stereo_calibration_workbench.py", ("solve",), "solve mono/stereo calibration"),
-    CalibrationCommand("stereo", "validate", "stereo_calibration_workbench.py", ("validate",), "validate a stereo calibration artifact"),
-    CalibrationCommand("stereo", "rectify", "stereo_calibration_workbench.py", ("rectify",), "render a rectification inspection view"),
+    CalibrationCommand(
+        "stereo", "target", None, ("target",), "generate a calibration target contract/render",
+        "bividi.calibration.stereo_workbench_command",
+    ),
+    CalibrationCommand(
+        "stereo", "session", None, ("session",), "build a paired stereo session manifest",
+        "bividi.calibration.stereo_workbench_command",
+    ),
+    CalibrationCommand(
+        "stereo", "session-recorder", None, ("session-recorder",), "import a recorder-backed stereo session",
+        "bividi.calibration.stereo_workbench_command",
+    ),
+    CalibrationCommand(
+        "stereo", "inspect", None, ("inspect",), "inspect target detection and dataset quality",
+        "bividi.calibration.stereo_workbench_command",
+    ),
+    CalibrationCommand(
+        "stereo", "solve", None, ("solve",), "solve mono/stereo calibration",
+        "bividi.calibration.stereo_workbench_command",
+    ),
+    CalibrationCommand(
+        "stereo", "validate", None, ("validate",), "validate a stereo calibration artifact",
+        "bividi.calibration.stereo_workbench_command",
+    ),
+    CalibrationCommand(
+        "stereo", "rectify", None, ("rectify",), "render a rectification inspection view",
+        "bividi.calibration.stereo_workbench_command",
+    ),
     CalibrationCommand(
         "stereo",
         "target-scale",
