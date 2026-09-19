@@ -28,6 +28,7 @@ class StereoModelCompareTests(unittest.TestCase):
             max_mono_rms_px=None,
             max_stereo_rms_px=None,
             max_epipolar_p95_px=None,
+            min_valid_area_fraction=None,
             min_valid_roi_fraction=None,
         )
         values.update(updates)
@@ -35,15 +36,10 @@ class StereoModelCompareTests(unittest.TestCase):
 
     def test_cli_route_is_package_native_outside_checkout(self):
         invocation = calib_cli.build_invocation(
-            "stereo",
-            "model-compare",
-            ["--self-test"],
+            "stereo", "model-compare", ["--self-test"],
             source_root=Path("/definitely/not/a/bividi/checkout"),
         )
-        self.assertEqual(
-            invocation,
-            [sys.executable, "-m", "bividi.calibration.stereo_model_compare", "--self-test"],
-        )
+        self.assertEqual(invocation, [sys.executable, "-m", "bividi.calibration.stereo_model_compare", "--self-test"])
 
     def test_cli_executes_self_test_outside_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -51,11 +47,8 @@ class StereoModelCompareTests(unittest.TestCase):
             os.chdir(tmp)
             try:
                 rc = calib_cli.main([
-                    "--source-root",
-                    "/definitely/not/a/bividi/checkout",
-                    "stereo",
-                    "model-compare",
-                    "--self-test",
+                    "--source-root", "/definitely/not/a/bividi/checkout",
+                    "stereo", "model-compare", "--self-test",
                 ])
             finally:
                 os.chdir(previous)
@@ -72,25 +65,22 @@ class StereoModelCompareTests(unittest.TestCase):
         self.assertTrue(all(len(item["sha256"]) == 64 for item in report["artifacts"]))
         self.assertEqual(len(report["pairwise_deltas"]), 1)
         for item in report["candidates"]:
-            self.assertIn("max_mono_rms_px", item)
-            self.assertIn("stereo_rms_px", item)
-            self.assertIn("epipolar_p95_px", item)
-            self.assertIn("min_valid_roi_fraction", item)
-            self.assertIn("baseline_m", item)
-            self.assertIn("distortion_parameter_count_total", item)
+            for key in (
+                "max_mono_rms_px", "stereo_rms_px", "epipolar_p95_px",
+                "min_valid_area_fraction", "valid_area_method", "baseline_m",
+                "distortion_parameter_count_total",
+            ):
+                self.assertIn(key, item)
 
     def test_explicit_policy_pass_and_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
             a, b = self.write_candidates(Path(tmp))
             passed = compare.compare([a, b], self.args(
-                selected_model="opencv-rational",
-                policy_source="lab policy MODEL-001",
-                max_stereo_rms_px=0.19,
-                min_valid_roi_fraction=0.99,
+                selected_model="opencv-rational", policy_source="lab policy MODEL-001",
+                max_stereo_rms_px=0.19, min_valid_roi_fraction=0.99,
             ))
             failed = compare.compare([a, b], self.args(
-                selected_model="opencv-rational",
-                policy_source="lab policy MODEL-001",
+                selected_model="opencv-rational", policy_source="lab policy MODEL-001",
                 max_stereo_rms_px=0.10,
             ))
         self.assertEqual(passed["selection"]["status"], "PASS")
@@ -100,15 +90,10 @@ class StereoModelCompareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             a, b = self.write_candidates(Path(tmp))
             self.assertEqual(compare.entrypoint([
-                str(a), str(b),
-                "--selected-model", "opencv-rational",
-                "--policy-source", "lab policy",
-                "--max-stereo-rms-px", "0.10",
+                str(a), str(b), "--selected-model", "opencv-rational",
+                "--policy-source", "lab policy", "--max-stereo-rms-px", "0.10",
             ]), 3)
-            self.assertEqual(compare.entrypoint([
-                str(a), str(b),
-                "--max-stereo-rms-px", "0.20",
-            ]), 2)
+            self.assertEqual(compare.entrypoint([str(a), str(b), "--max-stereo-rms-px", "0.20"]), 2)
             self.assertEqual(compare.entrypoint([str(a)]), 2)
 
     def test_mismatched_session_device_and_target_are_rejected(self):
@@ -144,10 +129,7 @@ class StereoModelCompareTests(unittest.TestCase):
         self.assertNotIn("def compare(", text)
         completed = subprocess.run(
             [sys.executable, str(root / "tools" / "compare_stereo_camera_models.py"), "--self-test"],
-            cwd=root,
-            check=False,
-            capture_output=True,
-            text=True,
+            cwd=root, check=False, capture_output=True, text=True,
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         self.assertIn("Stereo camera-model comparator self-test: PASS", completed.stdout)

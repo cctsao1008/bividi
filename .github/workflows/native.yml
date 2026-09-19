@@ -26,6 +26,7 @@ jobs:
         run: |
           bividi-calib --list
           bividi-calib --dry-run stereo solve session.json --output calibration.json
+          bividi-calib --dry-run stereo fisheye-evaluate session.json --output fisheye.json --candidate-id candidate --provenance synthetic
           bividi-calib --dry-run imu allan trace.csv
           bividi-calib --dry-run camera-imu import-kalibr result.yaml
       - name: Characterization comparator self-test
@@ -52,6 +53,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libopencv-dev python3-opencv python3-numpy
       - name: Stereo calibration OpenCV synthetic solver self-test
         run: python3 tools/stereo_calibration_workbench.py --self-test-opencv
+      - name: Stereo fisheye candidate OpenCV synthetic solver self-test
+        env:
+          PYTHONPATH: src
+        run: python3 -m bividi.calibration.stereo_fisheye_candidate --self-test-opencv
       - name: Configure
         run: cmake -S . -B build -DBIVIDI_WITH_OPENCV=ON -DBIVIDI_BUILD_VIEWER=ON -DBIVIDI_BUILD_WEB=ON -DBIVIDI_BUILD_TESTS=ON
       - name: Build
