@@ -181,7 +181,13 @@ _COMMANDS: tuple[CalibrationCommand, ...] = (
         summary="write legacy ROS1 bag for upstream Kalibr",
         module="bividi.calibration.kalibr_rosbag_command",
     ),
-    CalibrationCommand("camera-imu", "ros2-mcap", "write_ros2_calibration_mcap.py", (), "write ROS2/MCAP interoperability transport"),
+    CalibrationCommand(
+        "camera-imu",
+        "ros2-mcap",
+        None,
+        summary="write ROS2/MCAP interoperability transport",
+        module="bividi.calibration.ros2_mcap_command",
+    ),
     CalibrationCommand(
         "camera-imu",
         "import-kalibr",
