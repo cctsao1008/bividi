@@ -224,6 +224,65 @@ void test_step_replay_preserves_observations() {
     assert(first.continuity == bividi::ContinuityState::reinitialized);
 }
 
+void test_as_fast_replay_preserves_source_time_without_schedule_clock() {
+    TempSession temp("as-fast");
+    make_fixture(temp.path);
+
+    bividi::ReplayConfig config{};
+    config.session_dir = temp.path;
+    config.pacing = bividi::ReplayPacing::as_fast_as_possible;
+    bividi::ReplaySource replay(config);
+
+    bividi::SensorObservation observation;
+    assert(replay.next(observation));
+    assert(observation.sequence == 10);
+    assert(observation.timing.host_receive.ticks == 1000000000ULL);
+    assert(!observation.timing.replay_schedule.present);
+
+    assert(replay.next(observation));
+    assert(observation.sequence == 11);
+    assert(observation.timing.host_receive.ticks == 1001000000ULL);
+    assert(!observation.timing.replay_schedule.present);
+
+    assert(replay.next(observation));
+    assert(observation.sequence == 12);
+    assert(observation.timing.host_receive.ticks == 1002000000ULL);
+    assert(!observation.timing.replay_schedule.present);
+}
+
+void test_real_time_replay_uses_one_to_one_schedule_clock() {
+    TempSession temp("real-time");
+    make_fixture(temp.path);
+
+    bividi::ReplayConfig config{};
+    config.session_dir = temp.path;
+    config.pacing = bividi::ReplayPacing::real_time;
+    bividi::ReplaySource replay(config);
+
+    bividi::SensorObservation observation;
+    assert(replay.next(observation));
+    assert(observation.timing.host_receive.ticks == 1000000000ULL);
+    assert(observation.timing.replay_schedule.present);
+    assert(observation.timing.replay_schedule.domain == bividi::ClockDomain::replay);
+    assert(observation.timing.replay_schedule.ticks == 0);
+
+    assert(replay.next(observation));
+    assert(observation.timing.host_receive.ticks == 1001000000ULL);
+    assert(observation.timing.replay_schedule.ticks == 1000000ULL);
+
+    assert(replay.next(observation));
+    assert(observation.timing.host_receive.ticks == 1002000000ULL);
+    assert(observation.timing.replay_schedule.ticks == 2000000ULL);
+}
+
+void test_replay_pacing_names_are_stable() {
+    assert(std::string(bividi::replay_pacing_name(bividi::ReplayPacing::step)) == "step");
+    assert(std::string(bividi::replay_pacing_name(bividi::ReplayPacing::as_fast_as_possible)) ==
+           "as-fast-as-possible");
+    assert(std::string(bividi::replay_pacing_name(bividi::ReplayPacing::real_time)) == "real-time");
+    assert(std::string(bividi::replay_pacing_name(bividi::ReplayPacing::scaled)) == "scaled");
+}
+
 void test_scaled_replay_uses_separate_schedule_clock() {
     TempSession temp("scaled");
     make_fixture(temp.path);
@@ -404,6 +463,9 @@ void test_cross_csv_identity_mismatch_is_rejected() {
 
 int main() {
     test_step_replay_preserves_observations();
+    test_as_fast_replay_preserves_source_time_without_schedule_clock();
+    test_real_time_replay_uses_one_to_one_schedule_clock();
+    test_replay_pacing_names_are_stable();
     test_scaled_replay_uses_separate_schedule_clock();
     test_replay_interception_seam_supports_drop_duplicate_and_reorder();
     test_replay_capture_session_preview_and_controls();
