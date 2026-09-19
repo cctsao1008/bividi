@@ -8,8 +8,6 @@ from pathlib import Path
 
 PIN = "ce8c59b7b273ab5ac29db7e5572e1623760e19c7"
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "cmake" / "BividiKimeraExternal.cmake"
-PROBE = ROOT / "apps" / "bividi_kimera_link_probe.cpp"
 
 
 def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -65,70 +63,57 @@ def _write_bad_package(root: Path) -> Path:
     return prefix
 
 
-def _write_project(root: Path) -> Path:
-    src = root / "project"
-    src.mkdir()
-    src.joinpath("CMakeLists.txt").write_text(
-        textwrap.dedent(
-            f"""\
-            cmake_minimum_required(VERSION 3.20)
-            project(kimera_gate LANGUAGES CXX)
-            set(CMAKE_CXX_STANDARD 17)
-            set(CMAKE_CXX_STANDARD_REQUIRED ON)
-            set(BIVIDI_KIMERA_VIO_REVISION "${{REVISION}}")
-            include("{MODULE.as_posix()}")
-            add_executable(kimera_probe "{PROBE.as_posix()}")
-            target_link_libraries(kimera_probe PRIVATE ${{BIVIDI_KIMERA_VIO_TARGET}})
-            target_compile_definitions(kimera_probe PRIVATE
-                BIVIDI_KIMERA_VIO_PINNED_REVISION=\"${{BIVIDI_KIMERA_VIO_PINNED_REVISION}}\"
-                BIVIDI_KIMERA_VIO_TARGET_KIND=\"${{BIVIDI_KIMERA_VIO_TARGET_KIND}}\")
-            file(WRITE "${{CMAKE_BINARY_DIR}}/resolved.txt"
-                "${{BIVIDI_KIMERA_VIO_TARGET}}|${{BIVIDI_KIMERA_VIO_TARGET_KIND}}")
-            """
-        ),
-        encoding="utf-8",
-    )
-    return src
-
-
 class KimeraExternalCMakeGateTest(unittest.TestCase):
     def test_target_resolution_pin_and_link_probe(self) -> None:
+        external_source = ROOT / "cmake" / "kimera-external"
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            source = _write_project(root)
             fixtures = {
                 "namespaced": _write_fake_package(root, "namespaced"),
                 "plain": _write_fake_package(root, "plain"),
             }
             expected = {
-                "namespaced": "kimera_vio::kimera_vio|build-tree-alias",
-                "plain": "kimera_vio|installed-export",
+                "namespaced": "build-tree-alias",
+                "plain": "installed-export",
             }
             for name, prefix in fixtures.items():
                 build = root / f"build-{name}"
                 configured = _run(
                     [
-                        "cmake", "-S", str(source), "-B", str(build),
-                        f"-DCMAKE_PREFIX_PATH={prefix}", f"-DREVISION={PIN}",
+                        "cmake", "-S", str(external_source), "-B", str(build),
+                        f"-DCMAKE_PREFIX_PATH={prefix}",
+                        f"-DBIVIDI_KIMERA_VIO_REVISION={PIN}",
                     ],
                     root,
                 )
                 self.assertEqual(configured.returncode, 0, configured.stdout)
                 built = _run(["cmake", "--build", str(build), "--config", "Release"], root)
                 self.assertEqual(built.returncode, 0, built.stdout)
-                self.assertEqual(build.joinpath("resolved.txt").read_text(encoding="utf-8"), expected[name])
+
+                candidates = [
+                    build / "bividi-kimera-link-probe",
+                    build / "Release" / "bividi-kimera-link-probe.exe",
+                    build / "bividi-kimera-link-probe.exe",
+                ]
+                executable = next((candidate for candidate in candidates if candidate.exists()), None)
+                self.assertIsNotNone(executable, built.stdout)
+                probe = _run([str(executable)], root)
+                self.assertEqual(probe.returncode, 0, probe.stdout)
+                self.assertIn(f"pinned_revision={PIN}", probe.stdout)
+                self.assertIn(f"resolved_target_kind={expected[name]}", probe.stdout)
 
             missing = _run(
-                ["cmake", "-S", str(source), "-B", str(root / "build-missing"),
-                 f"-DCMAKE_PREFIX_PATH={fixtures['namespaced']}", "-DREVISION="],
+                ["cmake", "-S", str(external_source), "-B", str(root / "build-missing"),
+                 f"-DCMAKE_PREFIX_PATH={fixtures['namespaced']}"],
                 root,
             )
             self.assertNotEqual(missing.returncode, 0)
             self.assertIn("BIVIDI_KIMERA_VIO_REVISION", missing.stdout)
 
             wrong = _run(
-                ["cmake", "-S", str(source), "-B", str(root / "build-wrong"),
-                 f"-DCMAKE_PREFIX_PATH={fixtures['namespaced']}", "-DREVISION=deadbeef"],
+                ["cmake", "-S", str(external_source), "-B", str(root / "build-wrong"),
+                 f"-DCMAKE_PREFIX_PATH={fixtures['namespaced']}",
+                 "-DBIVIDI_KIMERA_VIO_REVISION=deadbeef"],
                 root,
             )
             self.assertNotEqual(wrong.returncode, 0)
@@ -136,8 +121,9 @@ class KimeraExternalCMakeGateTest(unittest.TestCase):
 
             bad_prefix = _write_bad_package(root)
             bad = _run(
-                ["cmake", "-S", str(source), "-B", str(root / "build-bad"),
-                 f"-DCMAKE_PREFIX_PATH={bad_prefix}", f"-DREVISION={PIN}"],
+                ["cmake", "-S", str(external_source), "-B", str(root / "build-bad"),
+                 f"-DCMAKE_PREFIX_PATH={bad_prefix}",
+                 f"-DBIVIDI_KIMERA_VIO_REVISION={PIN}"],
                 root,
             )
             self.assertNotEqual(bad.returncode, 0)
