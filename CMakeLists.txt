@@ -37,6 +37,15 @@ target_include_directories(bividi_vio PUBLIC include)
 target_link_libraries(bividi_vio PUBLIC bividi_core)
 target_compile_features(bividi_vio PUBLIC cxx_std_17)
 
+# #139 freezes the mapping to the exact pinned Kimera API without linking
+# Kimera/GTSAM/OpenCV. The external backend spike remains a later boundary.
+add_library(bividi_vio_kimera STATIC
+    src/native/vio_kimera.cpp
+)
+target_include_directories(bividi_vio_kimera PUBLIC include)
+target_link_libraries(bividi_vio_kimera PUBLIC bividi_vio)
+target_compile_features(bividi_vio_kimera PUBLIC cxx_std_17)
+
 if(BIVIDI_WITH_NORI_SDK)
     if(NOT BIVIDI_NORI_SDK_ROOT)
         message(FATAL_ERROR "BIVIDI_WITH_NORI_SDK=ON requires BIVIDI_NORI_SDK_ROOT")
@@ -262,6 +271,10 @@ if(BIVIDI_BUILD_TESTS)
     add_executable(bividi_vio_tests tests/native/test_vio.cpp)
     target_link_libraries(bividi_vio_tests PRIVATE bividi_vio)
     add_test(NAME bividi_vio_tests COMMAND bividi_vio_tests)
+
+    add_executable(bividi_vio_kimera_tests tests/native/test_vio_kimera.cpp)
+    target_link_libraries(bividi_vio_kimera_tests PRIVATE bividi_vio_kimera)
+    add_test(NAME bividi_vio_kimera_tests COMMAND bividi_vio_kimera_tests)
 
     # Live vendor-facing apps only link when the SDK path is enabled, but these
     # translation units deliberately depend on Bividi public declarations.
