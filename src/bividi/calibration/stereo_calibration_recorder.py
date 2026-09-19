@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
-from stereo_calibration_common import Error, SESSION, TARGET, load, now, rel, save, sha
+from .stereo_calibration_common import Error, SESSION, TARGET, load, now, rel, save, sha
 
 RECORDER_SCHEMA = "bividi.nori.camera_imu_dynamic_trace.v1"
 TOOL_VERSION = "1"
