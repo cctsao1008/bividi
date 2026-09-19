@@ -4,9 +4,9 @@ import argparse
 import math
 from pathlib import Path
 
-from stereo_calibration_common import *
-from stereo_calibration_recorder import recorder_self_test, session_from_recorder
-from stereo_calibration_solve import *
+from .stereo_calibration_common import *
+from .stereo_calibration_recorder import recorder_self_test, session_from_recorder
+from .stereo_calibration_solve import *
 
 
 def self_test():
