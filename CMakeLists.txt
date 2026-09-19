@@ -27,6 +27,16 @@ target_include_directories(bividi_core PUBLIC include)
 target_link_libraries(bividi_core PUBLIC Threads::Threads)
 target_compile_features(bividi_core PUBLIC cxx_std_17)
 
+# #46 VIO input/result semantics are downstream from raw acquisition. Keep the
+# adapter in its own dependency-light target so bividi_core never acquires a VIO
+# backend, OpenCV, ROS, Kalibr, or solver dependency.
+add_library(bividi_vio STATIC
+    src/native/vio.cpp
+)
+target_include_directories(bividi_vio PUBLIC include)
+target_link_libraries(bividi_vio PUBLIC bividi_core)
+target_compile_features(bividi_vio PUBLIC cxx_std_17)
+
 if(BIVIDI_WITH_NORI_SDK)
     if(NOT BIVIDI_NORI_SDK_ROOT)
         message(FATAL_ERROR "BIVIDI_WITH_NORI_SDK=ON requires BIVIDI_NORI_SDK_ROOT")
@@ -248,6 +258,10 @@ if(BIVIDI_BUILD_TESTS)
     add_executable(bividi_characterization_tests tests/native/test_characterization.cpp)
     target_link_libraries(bividi_characterization_tests PRIVATE bividi_core)
     add_test(NAME bividi_characterization_tests COMMAND bividi_characterization_tests)
+
+    add_executable(bividi_vio_tests tests/native/test_vio.cpp)
+    target_link_libraries(bividi_vio_tests PRIVATE bividi_vio)
+    add_test(NAME bividi_vio_tests COMMAND bividi_vio_tests)
 
     # Live vendor-facing apps only link when the SDK path is enabled, but these
     # translation units deliberately depend on Bividi public declarations.
