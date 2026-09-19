@@ -56,10 +56,16 @@ def board(cv2,t):
  c=t['charuco'];name=c['dictionary']
  if not hasattr(cv2.aruco,name):raise Error(f'unknown OpenCV aruco dictionary {name}')
  d=cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco,name));sz=(int(c['squares_x']),int(c['squares_y']));sq=c['square_length_mm']/1000.;mk=c['marker_length_mm']/1000.
+ # OpenCV 4.6 exposes CharucoBoard but its Python constructor can crash for
+ # the newer tuple-shaped signature. Prefer the stable legacy global factory
+ # whenever it exists; newer OpenCV releases removed that factory and use the
+ # constructor safely.
+ if hasattr(cv2.aruco,'CharucoBoard_create'):
+  return cv2.aruco.CharucoBoard_create(sz[0],sz[1],sq,mk,d)
  if hasattr(cv2.aruco,'CharucoBoard'):
   try:return cv2.aruco.CharucoBoard(sz,sq,mk,d)
   except TypeError:return cv2.aruco.CharucoBoard.create(sz[0],sz[1],sq,mk,d)
- return cv2.aruco.CharucoBoard_create(sz[0],sz[1],sq,mk,d)
+ raise Error('OpenCV aruco module does not provide a ChArUco board factory')
 def board_pts(b,np):return np.asarray(b.getChessboardCorners() if hasattr(b,'getChessboardCorners') else b.chessboardCorners,dtype=np.float32).reshape(-1,3)
 def detect(gray,b,cv2,np):
  if hasattr(cv2.aruco,'CharucoDetector'):c,i,_,_=cv2.aruco.CharucoDetector(b).detectBoard(gray)
