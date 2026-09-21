@@ -28,7 +28,12 @@ void check(const char* operation, std::uint32_t code) {
     }
 }
 
-VideoMode video_mode_from_vendor(const VIDEO_INFO& vendor_mode) noexcept {
+// The Windows SDK exposes FRAME_BUFFER_OUT::PixFormat as an anonymous struct
+// rather than VIDEO_INFO, even though both carry the same four fields. Keep
+// this adapter structural so advertised modes and per-frame modes share one
+// normalization path without relying on an invalid implicit conversion.
+template <typename VendorModeLike>
+VideoMode video_mode_from_vendor(const VendorModeLike& vendor_mode) noexcept {
     VideoMode mode{};
     mode.raw_format = vendor_mode.u_Format;
     mode.width = vendor_mode.u_Width;
@@ -65,7 +70,7 @@ E_TRIGGER_MODE vendor_trigger_mode(TriggerMode mode) {
 TriggerMode normalized_trigger_mode(E_TRIGGER_MODE mode) noexcept {
     switch (mode) {
         case SOFTWARE_TRIIGER_MODE: return TriggerMode::software;
-        case HARDWARE_TRIGGER_MODE: return TriggerMode::hardware;
+        case HARDWARE_TRIIGER_MODE: return TriggerMode::hardware;
         case COMMAND_TRIGGER_MODE: return TriggerMode::command;
         case NON_TRIIGER_MODE:
         default:
