@@ -1,0 +1,2 @@
+# Proprietary/local vendor payload. Keep integration metadata tracked, not the SDK itself.
+sdk/
