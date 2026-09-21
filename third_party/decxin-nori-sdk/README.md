@@ -2,7 +2,7 @@
 
 Bividi can use the vendor-supplied DECXIN/Nori SDK for the optional native capture backend.
 
-The vendor package is **not vendored into this public repository**. The supplied Windows archive does not contain a visible redistribution license at its package root, so headers, libraries, DLLs, sample sources, and executables must remain local until redistribution rights are established.
+The vendor package is **not vendored into this public repository**. The supplied Windows archive does not contain a visible redistribution license at its package root, so headers, libraries, DLLs, sample sources, and executables remain local until redistribution rights are established.
 
 ## Local layout
 
@@ -47,24 +47,31 @@ The script verifies the known archive hash by default, expands the package into 
 
 ## Build
 
-When the local SDK exists at the path above, Bividi auto-discovers it when the Nori backend is enabled:
+The current CMake contract keeps the vendor root explicit. With the local repository layout:
 
 ```powershell
-cmake -S . -B build-nori -DBIVIDI_WITH_NORI_SDK=ON
+$SdkRoot = (Resolve-Path ".\third_party\decxin-nori-sdk\sdk").Path
+
+cmake -S . -B build-nori `
+  -DBIVIDI_WITH_NORI_SDK=ON `
+  -DBIVIDI_NORI_SDK_ROOT="$SdkRoot"
+
 cmake --build build-nori --config Release
 ```
 
-An explicit SDK root still takes precedence:
+An SDK installed elsewhere can be supplied through the same `BIVIDI_NORI_SDK_ROOT` cache variable.
+
+## Windows runtime DLL
+
+The vendor runtime DLL must be discoverable when a Nori executable starts. The simplest local setup is:
 
 ```powershell
-cmake -S . -B build-nori `
-  -DBIVIDI_WITH_NORI_SDK=ON `
-  -DBIVIDI_NORI_SDK_ROOT="D:\vendor\Nori-sdk"
+Copy-Item `
+  .\third_party\decxin-nori-sdk\sdk\Libraries\win64\Nori_Xvision_API_x64.dll `
+  .\build-nori\Release\
 ```
 
-On Windows, CMake copies the matching Nori runtime DLL next to Bividi Nori executables after build so probe/characterization commands can run without a manual PATH edit.
-
-## Runtime smoke test
+Then run:
 
 ```powershell
 .\build-nori\Release\bividi-nori-probe.exe
@@ -78,8 +85,8 @@ Tracked here:
 
 - integration documentation;
 - installer/validator logic;
-- CMake discovery and runtime staging;
-- hashes/provenance for known vendor packages.
+- hashes/provenance for known vendor packages;
+- Bividi's SDK-facing adapter and characterization code.
 
 Not tracked here without an explicit redistribution grant:
 
