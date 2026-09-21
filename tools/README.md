@@ -2,6 +2,18 @@
 
 Host-side probes, capture utilities, calibration helpers, visualization, and characterization scripts belong here.
 
+For the delivered DECXIN AR0234 specimen, Windows DirectShow bring-up has a bounded cross-check path:
+
+```text
+run_decxin_directshow_qualification.py
+  FFmpeg DirectShow 4000x1200 MJPEG
+    -> decode only the 160x1200 metadata strip
+    -> reuse bividi.decxin timing/IMU primitives
+    -> emit versioned sustained-timing evidence
+```
+
+This DirectShow tool is a transport/timing cross-check only. The native Nori SDK path (`bividi-nori-characterize` plus `run_ar0234_qualification.py`) remains the authoritative staged qualification path for SDK behavior, recovery, RSS, and longer soak testing.
+
 For calibration workflows, prefer the consolidated operator entry point:
 
 ```text
