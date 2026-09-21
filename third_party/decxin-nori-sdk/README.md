@@ -1,53 +1,75 @@
-# DECXIN / Nori SDK local dependency
+# DECXIN / Nori SDK vendoring boundary
 
-Bividi can use the vendor-supplied DECXIN/Nori SDK for the optional native capture backend.
+Bividi uses the DECXIN/Nori SDK for the optional native capture backend.
 
-The vendor package is **not vendored into this public repository**. The supplied Windows archive does not contain a visible redistribution license at its package root, so headers, libraries, DLLs, sample sources, and executables remain local until redistribution rights are established.
+For this repository, **clone reproducibility is the primary requirement**: a developer cloning Bividi should not have to find a separate vendor ZIP before the Nori backend can be built. Therefore the repository workflow vendors the Windows x64 SDK subset that Bividi actually needs, while keeping the expanded working directory generated/ignored.
 
-## Local layout
+## Tracked vendor bundle
 
-Install or extract the SDK under:
-
-```text
-third_party/decxin-nori-sdk/sdk/
-```
-
-Expected Windows x64 files include:
+The repository expects this tracked file:
 
 ```text
-sdk/
-├── Includes/
-│   ├── Nori_Xvision_API/
-│   │   ├── Nori_Xvision_API.h
-│   │   └── Nori_Xvision_FirmwareControl.h
-│   └── Public/
-├── Libraries/
-│   ├── win32/
-│   └── win64/
-│       ├── Nori_Xvision_API_x64.lib
-│       └── Nori_Xvision_API_x64.dll
-└── Samples/
-    ├── C++/
-    └── c#/
+third_party/decxin-nori-sdk/vendor/DECXIN_Nori_Windows_x64_vendor_bundle.zip
 ```
 
-The supplied package used during AR0234 bring-up has SHA-256:
+The bundle contains the Windows x64 build/runtime subset required by Bividi:
+
+```text
+Includes/Nori_Xvision_API/Nori_Xvision_API.h
+Includes/Nori_Xvision_API/Nori_Xvision_FirmwareControl.h
+Includes/Public/Nori_public.h
+Includes/Public/Nori_Error_Define.h
+Libraries/win64/Nori_Xvision_API_x64.lib
+Libraries/win64/Nori_Xvision_API_x64.dll
+Samples/C++/x64/Release/Grab_Image.exe
+BIVIDI_VENDOR_PROVENANCE.txt
+```
+
+Known bundle SHA-256:
+
+```text
+5bfe5644f9df77aabeeb57ad4f43b59b9189d38298979024def51a0ee5d62f27
+```
+
+It was derived from the supplied AR0234 Windows SDK archive whose SHA-256 is:
 
 ```text
 a603d88975c222a2891ca74c8c339509da755c279c0501f87e1c5a10df30c2f4
 ```
 
-Use the repository installer/validator:
+The full ~54 MiB vendor package is intentionally not required for Bividi: samples and files unrelated to the Windows x64 native backend do not belong in the normal clone path.
 
-```powershell
-.\tools\install_decxin_nori_sdk.ps1 -Archive "C:\path\to\DECXIN_AR0234_Windows.zip"
+> Licensing note: the supplied package does not contain a visible package-root redistribution license. Keep the provenance/hash explicit and verify DECXIN/Norigine redistribution terms before treating this vendored subset as generally redistributable outside this project.
+
+## Expanded local layout
+
+The tracked bundle is expanded into:
+
+```text
+third_party/decxin-nori-sdk/sdk/
 ```
 
-The script verifies the known archive hash by default, expands the package into the local `sdk/` directory, and validates the header/import-library/runtime-DLL layout. Use `-AllowUnknownHash` only for a deliberately accepted vendor package revision.
+`./sdk/` is generated and ignored. A fresh clone reconstructs it from the tracked vendor bundle with:
+
+```powershell
+.\tools\install_decxin_nori_sdk.ps1
+```
+
+No external SDK path or download is required for the normal Windows x64 workflow.
+
+The installer also accepts an explicitly supplied full vendor archive when validating a new vendor revision:
+
+```powershell
+.\tools\install_decxin_nori_sdk.ps1 `
+  -Archive "C:\path\to\DECXIN_AR0234_Windows.zip" `
+  -Force
+```
+
+Unknown full-archive hashes require `-AllowUnknownHash`.
 
 ## Build
 
-The current CMake contract keeps the vendor root explicit. With the local repository layout:
+After expansion:
 
 ```powershell
 $SdkRoot = (Resolve-Path ".\third_party\decxin-nori-sdk\sdk").Path
@@ -59,40 +81,36 @@ cmake -S . -B build-nori `
 cmake --build build-nori --config Release
 ```
 
-An SDK installed elsewhere can be supplied through the same `BIVIDI_NORI_SDK_ROOT` cache variable.
-
-## Windows runtime DLL
-
-The vendor runtime DLL must be discoverable when a Nori executable starts. The simplest local setup is:
+Then stage the runtime DLL next to the generated executables:
 
 ```powershell
 Copy-Item `
-  .\third_party\decxin-nori-sdk\sdk\Libraries\win64\Nori_Xvision_API_x64.dll `
-  .\build-nori\Release\
+  "$SdkRoot\Libraries\win64\Nori_Xvision_API_x64.dll" `
+  ".\build-nori\Release\" `
+  -Force
 ```
 
-Then run:
+Probe the physical device:
 
 ```powershell
 .\build-nori\Release\bividi-nori-probe.exe
 ```
 
-Use the reported device/mode indexes for the live characterization harness described in `docs/characterization/nori-live-characterization.md`.
+Use the reported device/mode indexes for `bividi-nori-characterize` as documented in `docs/characterization/nori-live-characterization.md`.
 
-## Repository policy
+## Repository boundary
 
-Tracked here:
+Tracked:
 
-- integration documentation;
+- the compact Windows x64 vendor bundle required by Bividi;
+- vendor provenance and hashes;
+- integration/build documentation;
 - installer/validator logic;
-- hashes/provenance for known vendor packages;
 - Bividi's SDK-facing adapter and characterization code.
 
-Not tracked here without an explicit redistribution grant:
+Generated/ignored:
 
-- vendor headers;
-- DLL/LIB files;
-- vendor sample source or binaries;
-- firmware payloads.
+- `third_party/decxin-nori-sdk/sdk/` after expansion;
+- capture output and hardware evidence artifacts.
 
-This boundary keeps `bividi_core` vendor-independent while making the optional hardware backend reproducible for developers who possess the SDK.
+This keeps the normal clone self-contained without importing the entire vendor SDK tree into Bividi source layout.
