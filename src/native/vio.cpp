@@ -58,7 +58,6 @@ std::optional<TimePoint> camera_reference_time(
         return end;
     }
 
-    // Overflow-safe integer midpoint: start + floor((end-start)/2).
     TimePoint midpoint = start;
     midpoint.ticks = start.ticks + (end.ticks - start.ticks) / 2;
     return midpoint;
@@ -88,6 +87,7 @@ VioInputAdapter::VioInputAdapter(VioAdapterConfig config) : config_(std::move(co
 
 void VioInputAdapter::reset() noexcept {
     active_epoch_.reset();
+    last_emitted_imu_time_.reset();
 }
 
 VioPacket VioInputAdapter::adapt(const SensorObservation& observation) {
@@ -98,10 +98,18 @@ VioPacket VioInputAdapter::adapt(const SensorObservation& observation) {
 
     if (observation.continuity == ContinuityState::discontinuity) {
         active_epoch_.reset();
+        last_emitted_imu_time_.reset();
         auto packet = rejected_packet(observation, config_, "source continuity discontinuity requires backend reset");
         packet.state = VioPacketState::reset_required;
         packet.reset = VioResetDirective::reset_before_next;
         return packet;
+    }
+
+    const bool epoch_boundary =
+        (active_epoch_ && *active_epoch_ != observation.continuity_epoch) ||
+        observation.continuity == ContinuityState::reinitialized;
+    if (epoch_boundary) {
+        last_emitted_imu_time_.reset();
     }
 
     if (observation.source_state != SourceState::available) {
@@ -150,22 +158,44 @@ VioPacket VioInputAdapter::adapt(const SensorObservation& observation) {
 
     std::vector<VioImuSample> imu;
     imu.reserve(observation.imu.size());
-    std::optional<std::uint64_t> previous_ticks;
-    for (const auto& sample : observation.imu) {
+    std::optional<std::uint64_t> previous_source_ticks;
+
+    for (std::size_t index = 0; index < observation.imu.size(); ++index) {
+        const auto& sample = observation.imu[index];
         if (sample.validity != ObservationValidity::valid || !sample.si_valid) {
             return rejected_packet(observation, config_, "every VIO IMU sample must be valid calibrated SI data");
         }
         if (!is_device_time(sample.sample_time) || !same_clock(sample.sample_time, *time_a)) {
             return rejected_packet(observation, config_, "IMU sample time must share the camera device clock and unit");
         }
-        if (previous_ticks && sample.sample_time.ticks <= *previous_ticks) {
+        if (previous_source_ticks && sample.sample_time.ticks <= *previous_source_ticks) {
             return rejected_packet(observation, config_, "IMU sample timestamps must be strictly increasing without duplicates");
         }
         if (!finite3(sample.accel_m_s2) || !finite3(sample.gyro_rad_s)) {
             return rejected_packet(observation, config_, "IMU SI values must be finite");
         }
-        previous_ticks = sample.sample_time.ticks;
+        previous_source_ticks = sample.sample_time.ticks;
+
+        if (last_emitted_imu_time_) {
+            if (!same_clock(sample.sample_time, *last_emitted_imu_time_)) {
+                return rejected_packet(observation, config_, "IMU sample clock changed within a continuity epoch");
+            }
+            if (sample.sample_time.ticks < last_emitted_imu_time_->ticks) {
+                return rejected_packet(observation, config_, "IMU sample timestamp moved backward across observations");
+            }
+            if (sample.sample_time.ticks == last_emitted_imu_time_->ticks) {
+                if (index == 0) {
+                    continue;
+                }
+                return rejected_packet(observation, config_, "duplicate IMU timestamp is only allowed for the first shared boundary sample");
+            }
+        }
+
         imu.push_back({sample.sample_time, sample.accel_m_s2, sample.gyro_rad_s});
+    }
+
+    if (imu.empty()) {
+        return rejected_packet(observation, config_, "IMU boundary deduplication left no new samples for VIO");
     }
 
     VioPacket packet{};
@@ -189,6 +219,7 @@ VioPacket VioInputAdapter::adapt(const SensorObservation& observation) {
         packet.reset = VioResetDirective::reinitialize;
     }
     active_epoch_ = observation.continuity_epoch;
+    last_emitted_imu_time_ = packet.imu.back().sample_time;
     return packet;
 }
 

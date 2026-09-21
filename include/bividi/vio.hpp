@@ -123,6 +123,7 @@ public:
 private:
     VioAdapterConfig config_{};
     std::optional<std::uint64_t> active_epoch_;
+    std::optional<TimePoint> last_emitted_imu_time_;
 };
 
 class VioBackend {
