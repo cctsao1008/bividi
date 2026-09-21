@@ -70,7 +70,7 @@ E_TRIGGER_MODE vendor_trigger_mode(TriggerMode mode) {
 TriggerMode normalized_trigger_mode(E_TRIGGER_MODE mode) noexcept {
     switch (mode) {
         case SOFTWARE_TRIIGER_MODE: return TriggerMode::software;
-        case HARDWARE_TRIIGER_MODE: return TriggerMode::hardware;
+        case HARDWARE_TRIGGER_MODE: return TriggerMode::hardware;
         case COMMAND_TRIGGER_MODE: return TriggerMode::command;
         case NON_TRIIGER_MODE:
         default:
