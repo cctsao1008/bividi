@@ -124,9 +124,12 @@ void test_midpoint_time_and_first_packet_reinitialize() {
     assert(packet.evidence == bividi::EvidenceKind::synthetic);
 
     observation.sequence = 43;
+    observation.imu = {imu(1100), imu(1200), imu(1300)};
     const auto next = adapter.adapt(observation);
     assert(next.backend_ready());
     assert(next.reset == bividi::VioResetDirective::none);
+    assert(next.imu.size() == 2);
+    assert(next.imu.front().sample_time.ticks == 1200);
 }
 
 void test_midpoint_is_overflow_safe() {
@@ -245,11 +248,92 @@ void test_imu_requires_si_device_clock_and_strict_source_order() {
     }
 }
 
+void test_shared_cross_observation_imu_endpoint_is_suppressed() {
+    bividi::VioInputAdapter adapter;
+    const auto first = adapter.adapt(good_observation());
+    assert(first.backend_ready());
+    assert(first.imu.back().sample_time.ticks == 1100);
+
+    auto observation = good_observation();
+    observation.sequence = 43;
+    observation.imu = {imu(1100), imu(1200), imu(1300)};
+    const auto second = adapter.adapt(observation);
+    assert(second.backend_ready());
+    assert(second.reset == bividi::VioResetDirective::none);
+    assert(second.imu.size() == 2);
+    assert(second.imu[0].sample_time.ticks == 1200);
+    assert(second.imu[1].sample_time.ticks == 1300);
+}
+
+void test_shared_timestamp_with_changed_payload_is_rejected_without_advancing_state() {
+    bividi::VioInputAdapter adapter;
+    assert(adapter.adapt(good_observation()).backend_ready());
+
+    auto bad = good_observation();
+    bad.sequence = 43;
+    bad.imu = {imu(1100), imu(1200), imu(1300)};
+    bad.imu[0].gyro_rad_s[0] += 1.0;
+    const auto rejected = adapter.adapt(bad);
+    assert(rejected.state == bividi::VioPacketState::rejected);
+    assert(rejected.reason.find("different SI payload") != std::string::npos);
+
+    auto good = good_observation();
+    good.sequence = 44;
+    good.imu = {imu(1100), imu(1200), imu(1300)};
+    const auto recovered = adapter.adapt(good);
+    assert(recovered.backend_ready());
+    assert(recovered.imu.size() == 2);
+    assert(recovered.imu.front().sample_time.ticks == 1200);
+}
+
+void test_cross_observation_backward_imu_time_is_rejected() {
+    bividi::VioInputAdapter adapter;
+    assert(adapter.adapt(good_observation()).backend_ready());
+
+    auto observation = good_observation();
+    observation.sequence = 43;
+    observation.imu = {imu(1050), imu(1200), imu(1300)};
+    const auto packet = adapter.adapt(observation);
+    assert(packet.state == bividi::VioPacketState::rejected);
+    assert(packet.reason.find("moved backward") != std::string::npos);
+}
+
+void test_shared_endpoint_only_packet_is_rejected() {
+    bividi::VioInputAdapter adapter;
+    assert(adapter.adapt(good_observation()).backend_ready());
+
+    auto observation = good_observation();
+    observation.sequence = 43;
+    observation.imu = {imu(1100)};
+    const auto packet = adapter.adapt(observation);
+    assert(packet.state == bividi::VioPacketState::rejected);
+    assert(packet.reason.find("no new IMU samples") != std::string::npos);
+}
+
+void test_adapter_reset_clears_cross_observation_imu_history() {
+    bividi::VioInputAdapter adapter;
+    assert(adapter.adapt(good_observation()).backend_ready());
+    adapter.reset();
+
+    auto observation = good_observation();
+    observation.sequence = 43;
+    const auto packet = adapter.adapt(observation);
+    assert(packet.backend_ready());
+    assert(packet.reset == bividi::VioResetDirective::reinitialize);
+    assert(packet.imu.size() == 3);
+}
+
 void test_continuity_reset_semantics_do_not_carry_state_across_epoch() {
     bividi::VioInputAdapter adapter;
     auto observation = good_observation(10);
     assert(adapter.adapt(observation).reset == bividi::VioResetDirective::reinitialize);
-    assert(adapter.adapt(observation).reset == bividi::VioResetDirective::none);
+
+    observation.sequence = 43;
+    observation.imu = {imu(1100), imu(1200), imu(1300)};
+    const auto continuous = adapter.adapt(observation);
+    assert(continuous.backend_ready());
+    assert(continuous.reset == bividi::VioResetDirective::none);
+    assert(continuous.imu.size() == 2);
 
     observation.continuity = bividi::ContinuityState::discontinuity;
     const auto discontinuity = adapter.adapt(observation);
@@ -261,16 +345,19 @@ void test_continuity_reset_semantics_do_not_carry_state_across_epoch() {
     const auto after_reset = adapter.adapt(observation);
     assert(after_reset.backend_ready());
     assert(after_reset.reset == bividi::VioResetDirective::reinitialize);
+    assert(after_reset.imu.size() == 3);
 
     observation.continuity_epoch = 11;
     const auto new_epoch = adapter.adapt(observation);
     assert(new_epoch.backend_ready());
     assert(new_epoch.reset == bividi::VioResetDirective::reinitialize);
+    assert(new_epoch.imu.size() == 3);
 
     observation.continuity = bividi::ContinuityState::reinitialized;
     const auto declared = adapter.adapt(observation);
     assert(declared.backend_ready());
     assert(declared.reset == bividi::VioResetDirective::reinitialize);
+    assert(declared.imu.size() == 3);
 }
 
 void test_source_and_observation_state_rejection() {
@@ -325,6 +412,11 @@ int main() {
     test_calibration_and_configuration_are_mandatory();
     test_stereo_sync_validity_and_clock_are_explicit();
     test_imu_requires_si_device_clock_and_strict_source_order();
+    test_shared_cross_observation_imu_endpoint_is_suppressed();
+    test_shared_timestamp_with_changed_payload_is_rejected_without_advancing_state();
+    test_cross_observation_backward_imu_time_is_rejected();
+    test_shared_endpoint_only_packet_is_rejected();
+    test_adapter_reset_clears_cross_observation_imu_history();
     test_continuity_reset_semantics_do_not_carry_state_across_epoch();
     test_source_and_observation_state_rejection();
     test_fake_backend_reset_process_and_pose_validation();
