@@ -6,13 +6,20 @@ For this repository, clone reproducibility is the primary requirement: a develop
 
 ## Tracked vendor bundle
 
-Expected tracked file:
+The compact ZIP is represented in Git as five base64 parts:
 
 ```text
-third_party/decxin-nori-sdk/vendor/DECXIN_Nori_Windows_x64_vendor_bundle.zip
+third_party/decxin-nori-sdk/vendor/
+  DECXIN_Nori_Windows_x64_vendor_bundle.zip.b64.part00
+  DECXIN_Nori_Windows_x64_vendor_bundle.zip.b64.part01
+  DECXIN_Nori_Windows_x64_vendor_bundle.zip.b64.part02
+  DECXIN_Nori_Windows_x64_vendor_bundle.zip.b64.part03
+  DECXIN_Nori_Windows_x64_vendor_bundle.zip.b64.part04
 ```
 
-The bundle contains:
+`tools/install_decxin_nori_sdk.ps1` concatenates and decodes these files automatically, verifies the reconstructed ZIP, and expands it into the ignored SDK working tree. A normal clone therefore needs no separate vendor download.
+
+The reconstructed bundle contains:
 
 ```text
 Includes/Nori_Xvision_API/Nori_Xvision_API.h
@@ -25,13 +32,13 @@ Samples/C++/x64/Release/Grab_Image.exe
 BIVIDI_VENDOR_PROVENANCE.txt
 ```
 
-Bundle SHA-256:
+Reconstructed bundle SHA-256:
 
 ```text
 ff358cd7327f3246f9d5fcf58207bf1db46c384f4095b267c1d142d9fbc7daa5
 ```
 
-Bundle size:
+Reconstructed bundle size:
 
 ```text
 510121 bytes
@@ -54,13 +61,13 @@ The full ~54 MiB package is not required by Bividi's Windows x64 backend.
 .\tools\install_decxin_nori_sdk.ps1
 ```
 
-This expands the tracked bundle into:
+This reconstructs and validates the tracked bundle, then expands it into:
 
 ```text
 third_party/decxin-nori-sdk/sdk/
 ```
 
-The expanded `sdk/` directory is ignored because it is generated from the tracked bundle.
+The expanded `sdk/` directory is ignored because it is generated from the tracked bundle parts.
 
 ## Build
 
