@@ -12,7 +12,7 @@ function renderEvidenceNotice(s) {
   } else if (s.source.startsWith('replay:')) {
     $('evidence-notice').textContent = 'Replay source. Recorded provenance is preserved; calibrated derived geometry still requires an explicitly selected calibration artifact.';
   } else {
-    $('evidence-notice').textContent = 'Live engineering source. Stereo/IMU data are measured source evidence. Quick depth, when enabled, is uncalibrated relative disparity only.';
+    $('evidence-notice').textContent = 'Live engineering source. Stereo/IMU data are measured source evidence. Quick depth, when enabled, remains uncalibrated relative disparity even when auto-rectification is active.';
   }
 }
 
@@ -54,16 +54,31 @@ function renderDepthStatus(d) {
   const sequencePresent = quick ? Boolean(d.available) : Boolean(d.sequence_present);
 
   if (quick) {
+    const rectified = Boolean(d.rectified);
+    const rawValid = Number(d.raw_valid_fraction || 0) * 100;
+    const finalValid = Number(d.valid_fraction || 0) * 100;
+    const before = Number(d.median_vertical_before_px || 0);
+    const after = Number(d.median_vertical_after_px || 0);
+    const attempts = Number(d.rectification_attempts || 0);
+    const matches = Number(d.rectification_matches || 0);
+    const inliers = Number(d.rectification_inliers || 0);
+
     $('depth-title').textContent = 'Live uncalibrated stereo depth';
-    $('depth-note').textContent = 'Quick preview only: Camera B is treated as rig-left and Camera A as rig-right. No rectification, intrinsics, baseline, or metric scale is applied; use this to inspect live relative near/far structure only.';
-    $('disparity-caption').textContent = 'Uncalibrated disparity';
-    $('depth-caption').textContent = 'Relative near / far heatmap';
+    $('depth-note').textContent = rectified
+      ? 'Quick preview only: Camera B is rig-left and Camera A is rig-right. A frozen image-derived homography is auto-rectifying the pair before StereoSGBM. No intrinsics, lens model, baseline, or metric scale is applied.'
+      : 'Quick preview only: Camera B is rig-left and Camera A is rig-right. Auto-rectification is still searching or rejected, so the current display uses raw unrectified StereoSGBM. No metric scale is applied.';
+    $('disparity-caption').textContent = rectified ? 'Auto-rectified disparity' : 'Raw unrectified disparity';
+    $('depth-caption').textContent = rectified ? 'Auto-rectified relative near / far' : 'Raw relative near / far';
     $('depth-calibration-label').textContent = 'Geometry mode';
-    $('depth-calibration').textContent = 'uncalibrated';
+    $('depth-calibration').textContent = rectified ? 'uncalibrated + auto-rectified' : 'uncalibrated raw';
     $('depth-sync').textContent = 'unverified';
     $('depth-processing').textContent = Number.isFinite(Number(d.processing_ms)) ? `${Number(d.processing_ms).toFixed(1)} ms` : '—';
-    $('depth-disposition').textContent = d.error ? 'processing_error' : (available ? 'quick_uncalibrated' : 'waiting');
-    $('depth-reason').textContent = d.error || 'relative disparity only';
+    $('depth-disposition').textContent = d.error ? 'raw_fallback' : (rectified ? 'auto_rectified' : (available ? 'quick_raw' : 'waiting'));
+
+    const rectificationSummary = attempts > 0
+      ? `${d.rectification_reason || 'rectification pending'} · ${matches} matches / ${inliers} inliers · vertical ${before.toFixed(2)}→${after.toFixed(2)} px · valid ${rawValid.toFixed(1)}→${finalValid.toFixed(1)}%`
+      : 'waiting for first auto-rectification attempt';
+    $('depth-reason').textContent = d.error ? `${d.error} · ${rectificationSummary}` : rectificationSummary;
   } else {
     $('depth-title').textContent = 'Calibrated stereo depth';
     $('depth-note').textContent = 'Visualization products derived from the selected calibration artifact and normalized source observation. Numeric float disparity/depth remains the authoritative geometry result.';
