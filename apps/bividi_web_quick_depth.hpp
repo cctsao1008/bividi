@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -159,6 +160,7 @@ public:
         const auto snapshot = latest();
         std::ostringstream out;
         out << "{\"enabled\":true,"
+            << "\"mode\":\"quick_uncalibrated\","
             << "\"available\":" << (snapshot.available ? "true" : "false") << ','
             << "\"revision\":" << snapshot.revision << ','
             << "\"sequence\":" << snapshot.source_sequence << ','
@@ -180,7 +182,7 @@ public:
         if (!snapshot.available) {
             return placeholder_jpeg(
                 proximity ? "Relative near/far preview" : "Uncalibrated disparity preview",
-                snapshot.error.empty() ? "waiting for synchronized stereo preview" : snapshot.error);
+                snapshot.error.empty() ? "waiting for paired live stereo preview" : snapshot.error);
         }
         return encode_jpeg(proximity ? snapshot.proximity_preview : snapshot.disparity_preview);
     }
