@@ -6,12 +6,15 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <limits>
 #include <mutex>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace bividi::nori {
 namespace {
@@ -64,8 +67,9 @@ std::uint32_t quantize_gain(int gain_x10, const SensorGainInfo& info) noexcept {
         std::min<std::uint64_t>(quantized, info.maximum));
 }
 
+template <typename Status>
 void track_sequence(
-    CaptureStatus& status,
+    Status& status,
     std::uint64_t sequence,
     bool& have_last,
     std::uint64_t& last_sequence) noexcept {
@@ -109,6 +113,19 @@ std::string source_id(const StreamConfig& config) {
     return out.str();
 }
 
+RawFrame copy_raw_packet(const RawFrame& raw) {
+    if (!raw.valid()) throw Error("cannot copy an invalid Nori raw frame");
+
+    auto* bytes = new std::vector<std::uint8_t>(raw.data, raw.data + raw.size);
+    RawFrame owned = raw;
+    owned.lease = FrameLease::adopt(
+        bytes,
+        [](std::vector<std::uint8_t>* storage) noexcept { delete storage; });
+    owned.data = bytes->data();
+    owned.size = bytes->size();
+    return owned;
+}
+
 SensorCapabilities make_observation_capabilities() {
     SensorCapabilities caps{};
     caps.cameras = {
@@ -142,6 +159,12 @@ SensorCapabilities make_observation_capabilities() {
     return caps;
 }
 
+struct QueuedRawPacket {
+    RawFrame raw{};
+    std::uint64_t continuity_epoch = 0;
+    std::uint64_t generation = 0;
+};
+
 }  // namespace
 
 struct NoriCaptureSession::Impl {
@@ -152,28 +175,90 @@ struct NoriCaptureSession::Impl {
         if (!conformance.ok) {
             throw std::invalid_argument("internal Nori normalized capabilities are invalid");
         }
+        if (config.decode_queue_depth == 0) {
+            throw std::invalid_argument("Nori decode_queue_depth must be greater than zero");
+        }
+
         state.capture.state = CaptureState::idle;
         state.source_id = source_id(config.stream);
+        state.decode_queue.capacity = config.decode_queue_depth;
         state.last_action = "Nori session starting";
-        worker = std::thread([this] { worker_loop(); });
+
+        decoder_worker = std::thread([this] { decoder_loop(); });
+        try {
+            worker = std::thread([this] { worker_loop(); });
+        } catch (...) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                stop = true;
+            }
+            decode_wake.notify_all();
+            if (decoder_worker.joinable()) decoder_worker.join();
+            throw;
+        }
     }
 
     ~Impl() {
         {
             std::lock_guard<std::mutex> lock(mutex);
             stop = true;
+            decode_queue.clear();
+            state.decode_queue.occupancy = 0;
         }
         wake.notify_all();
+        decode_wake.notify_all();
         if (worker.joinable()) worker.join();
+        if (decoder_worker.joinable()) decoder_worker.join();
+    }
+
+    void flush_decode_queue_locked(bool count_flushed = true) {
+        if (count_flushed) {
+            state.decode_queue.flushed_frames += decode_queue.size();
+        }
+        decode_queue.clear();
+        state.decode_queue.occupancy = 0;
+        ++decode_generation;
+    }
+
+    void begin_new_epoch_locked() {
+        if (have_connected_before) {
+            ++continuity_epoch;
+        }
+        flush_decode_queue_locked();
+        have_last_sequence = false;
+        last_sequence = 0;
+        source_have_last_sequence = false;
+        source_last_sequence = 0;
     }
 
     void set_error(const std::string& message) {
-        std::lock_guard<std::mutex> lock(mutex);
-        state.capture.state = CaptureState::error;
-        state.fps = 0.0;
-        state.last_action = message;
-        latest_preview = {};
-        latest_normalized_observation = {};
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (stop) return;
+            flush_decode_queue_locked();
+            state.capture.state = CaptureState::error;
+            state.fps = 0.0;
+            state.last_action = message;
+            latest_preview = {};
+            latest_normalized_observation = {};
+        }
+        decode_wake.notify_all();
+    }
+
+    void set_decoder_error(const std::string& message) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (stop) return;
+            decoder_failed = true;
+            flush_decode_queue_locked();
+            state.capture.state = CaptureState::error;
+            state.fps = 0.0;
+            state.last_action = message;
+            latest_preview = {};
+            latest_normalized_observation = {};
+        }
+        wake.notify_all();
+        decode_wake.notify_all();
     }
 
     void publish_connection(Stream& stream) {
@@ -187,14 +272,12 @@ struct NoriCaptureSession::Impl {
         try { gain_x10 = static_cast<int>(stream.gain_info().current * 10u); } catch (...) {}
 
         std::lock_guard<std::mutex> lock(mutex);
-        if (have_connected_before) {
-            ++continuity_epoch;
-        } else {
-            have_connected_before = true;
-        }
-        next_observation_reinitialized = true;
+        have_connected_before = true;
 
         state.capture = {};
+        state.source = {};
+        state.decode_queue = {};
+        state.decode_queue.capacity = config.decode_queue_depth;
         state.capture.state = desired_running ? CaptureState::running : CaptureState::paused;
         state.fps = 0.0;
         state.nominal_fps = selected.fps;
@@ -210,6 +293,8 @@ struct NoriCaptureSession::Impl {
         latest_normalized_observation = {};
         have_last_sequence = false;
         last_sequence = 0;
+        source_have_last_sequence = false;
+        source_last_sequence = 0;
         fps_window_frames = 0;
         fps_window_start = Clock::now();
     }
@@ -267,7 +352,11 @@ struct NoriCaptureSession::Impl {
         }
     }
 
-    void publish_frame(const DecodedCapture& capture) {
+    bool publish_frame(
+        const DecodedCapture& capture,
+        std::uint64_t frame_epoch,
+        std::uint64_t generation,
+        bool reinitialized) {
         StereoPreviewFrame preview{};
         preview.lease = capture.decoded.lease;
         preview.camera_a = capture.decoded.camera_a;
@@ -280,14 +369,23 @@ struct NoriCaptureSession::Impl {
 
         const auto now = Clock::now();
         std::lock_guard<std::mutex> lock(mutex);
+        if (stop || decoder_failed || generation != decode_generation ||
+            frame_epoch != continuity_epoch) {
+            return false;
+        }
+
+        const bool sequence_discontinuity =
+            have_last_sequence && preview.sequence != last_sequence + 1;
 
         decxin::ObservationContext context{};
         context.source_id = source_id(config.stream);
         context.evidence = config.evidence;
-        context.continuity_epoch = continuity_epoch;
-        context.continuity = next_observation_reinitialized
+        context.continuity_epoch = frame_epoch;
+        context.continuity = reinitialized
             ? ContinuityState::reinitialized
-            : ContinuityState::continuous;
+            : (sequence_discontinuity
+                ? ContinuityState::discontinuity
+                : ContinuityState::continuous);
         context.calibration = config.calibration;
         context.configuration_revision = config.configuration_revision;
         auto normalized = decxin::to_sensor_observation(capture.decoded, context);
@@ -309,7 +407,6 @@ struct NoriCaptureSession::Impl {
         if (preview.imu_rate_hz != 0) state.imu_rate_hz = preview.imu_rate_hz;
         latest_preview = std::move(preview);
         latest_normalized_observation = std::move(normalized);
-        next_observation_reinitialized = false;
 
         const auto elapsed = std::chrono::duration<double>(now - fps_window_start).count();
         if (elapsed >= 0.5) {
@@ -317,6 +414,7 @@ struct NoriCaptureSession::Impl {
             fps_window_frames = 0;
             fps_window_start = now;
         }
+        return true;
     }
 
     void wait_disconnected() {
@@ -327,37 +425,95 @@ struct NoriCaptureSession::Impl {
     void wait_paused() {
         std::unique_lock<std::mutex> lock(mutex);
         wake.wait(lock, [this] {
-            return stop || reconnect_requested || desired_running ||
+            return stop || reconnect_requested || desired_running || decoder_failed ||
                    pending_exposure_us.has_value() || pending_gain_x10.has_value() ||
                    pending_trigger_mode.has_value();
         });
     }
 
+    void decoder_loop() {
+        DecxinPipeline pipeline(NormalizationOwnership::own_output);
+        bool have_generation = false;
+        std::uint64_t active_generation = 0;
+        bool published_in_generation = false;
+
+        for (;;) {
+            QueuedRawPacket packet;
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                decode_wake.wait(lock, [this] { return stop || !decode_queue.empty(); });
+                if (stop && decode_queue.empty()) break;
+                if (decode_queue.empty()) continue;
+
+                packet = std::move(decode_queue.front());
+                decode_queue.pop_front();
+                state.decode_queue.occupancy = static_cast<std::uint32_t>(decode_queue.size());
+            }
+
+            if (!have_generation || packet.generation != active_generation) {
+                pipeline.reset_timestamps();
+                active_generation = packet.generation;
+                have_generation = true;
+                published_in_generation = false;
+            }
+
+            try {
+                auto capture = pipeline.decode(packet.raw);
+                packet.raw.lease.reset();
+                if (!capture.valid()) {
+                    throw Error("Nori DECXIN pipeline produced an invalid decoded frame");
+                }
+                if (publish_frame(
+                        capture,
+                        packet.continuity_epoch,
+                        packet.generation,
+                        !published_in_generation)) {
+                    published_in_generation = true;
+                }
+            } catch (const std::exception& error) {
+                packet.raw.lease.reset();
+                set_decoder_error(std::string("Nori decode failed: ") + error.what());
+            } catch (...) {
+                packet.raw.lease.reset();
+                set_decoder_error("Nori decode failed: unknown exception");
+            }
+        }
+    }
+
     void worker_loop() {
         std::unique_ptr<Stream> stream;
-        DecxinPipeline pipeline(NormalizationOwnership::own_output);
 
         while (true) {
             bool should_reconnect = false;
+            bool decode_failed = false;
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 if (stop) break;
                 if (reconnect_requested) {
                     reconnect_requested = false;
                     should_reconnect = true;
+                    decoder_failed = false;
+                    begin_new_epoch_locked();
                     state.capture.state = CaptureState::idle;
                     state.fps = 0.0;
                     state.last_action = stream ? "reconnecting Nori stream" : "connecting Nori stream";
                     latest_preview = {};
                     latest_normalized_observation = {};
                 }
+                decode_failed = decoder_failed;
+            }
+            decode_wake.notify_all();
+
+            if (decode_failed && !should_reconnect) {
+                stream.reset();
+                wait_disconnected();
+                continue;
             }
 
             if (should_reconnect) {
                 // Vendor stop/uninit can block. Never hold the public session
                 // mutex while tearing down the SDK path.
                 stream.reset();
-                pipeline.reset_timestamps();
             }
 
             if (!stream) {
@@ -368,7 +524,6 @@ struct NoriCaptureSession::Impl {
 
                 try {
                     stream = std::make_unique<Stream>(config.stream);
-                    pipeline.reset_timestamps();
                     bool run = true;
                     {
                         std::lock_guard<std::mutex> lock(mutex);
@@ -390,8 +545,9 @@ struct NoriCaptureSession::Impl {
                 if (stop) break;
                 reconnect = reconnect_requested;
                 run = desired_running;
+                decode_failed = decoder_failed;
             }
-            if (reconnect) continue;
+            if (reconnect || decode_failed) continue;
 
             try {
                 if (run && !stream->running()) {
@@ -401,10 +557,14 @@ struct NoriCaptureSession::Impl {
                     state.last_action = "capture resumed";
                 } else if (!run && stream->running()) {
                     stream->stop_video();
-                    std::lock_guard<std::mutex> lock(mutex);
-                    state.capture.state = CaptureState::paused;
-                    state.fps = 0.0;
-                    state.last_action = "capture paused";
+                    {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        begin_new_epoch_locked();
+                        state.capture.state = CaptureState::paused;
+                        state.fps = 0.0;
+                        state.last_action = "capture paused";
+                    }
+                    decode_wake.notify_all();
                 }
             } catch (const std::exception& error) {
                 stream.reset();
@@ -423,12 +583,39 @@ struct NoriCaptureSession::Impl {
                 auto raw = stream->next_frame();
                 if (!raw.valid()) continue;  // timeout/no-buffer is not a fatal stream error
 
-                auto capture = pipeline.decode(raw);
-                raw.lease.reset();  // own_output makes prompt vendor-buffer return safe
-                if (!capture.valid()) {
-                    throw Error("Nori DECXIN pipeline produced an invalid decoded frame");
+                auto owned = copy_raw_packet(raw);
+                raw.lease.reset();  // return the vendor buffer before any OpenCV/DECXIN decode
+
+                bool queued = false;
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (stop || reconnect_requested || decoder_failed || !desired_running) {
+                        continue;
+                    }
+
+                    ++state.source.frames;
+                    track_sequence(
+                        state.source,
+                        owned.sequence,
+                        source_have_last_sequence,
+                        source_last_sequence);
+
+                    if (decode_queue.size() >= config.decode_queue_depth) {
+                        ++state.decode_queue.overflows;
+                    } else {
+                        QueuedRawPacket packet{};
+                        packet.raw = std::move(owned);
+                        packet.continuity_epoch = continuity_epoch;
+                        packet.generation = decode_generation;
+                        decode_queue.push_back(std::move(packet));
+                        state.decode_queue.occupancy = static_cast<std::uint32_t>(decode_queue.size());
+                        state.decode_queue.high_watermark = std::max(
+                            state.decode_queue.high_watermark,
+                            state.decode_queue.occupancy);
+                        queued = true;
+                    }
                 }
-                publish_frame(capture);
+                if (queued) decode_wake.notify_one();
             } catch (const std::exception& error) {
                 stream.reset();
                 set_error(std::string("Nori capture failed: ") + error.what());
@@ -440,23 +627,29 @@ struct NoriCaptureSession::Impl {
     const SensorCapabilities capabilities;
     mutable std::mutex mutex;
     std::condition_variable wake;
+    std::condition_variable decode_wake;
     SessionStatus state{};
     StereoPreviewFrame latest_preview{};
     SensorObservation latest_normalized_observation{};
+    std::deque<QueuedRawPacket> decode_queue;
     bool stop = false;
     bool desired_running = true;
     bool reconnect_requested = true;
+    bool decoder_failed = false;
     std::optional<int> pending_exposure_us;
     std::optional<int> pending_gain_x10;
     std::optional<TriggerMode> pending_trigger_mode;
     bool have_last_sequence = false;
     std::uint64_t last_sequence = 0;
+    bool source_have_last_sequence = false;
+    std::uint64_t source_last_sequence = 0;
     std::uint64_t continuity_epoch = 0;
+    std::uint64_t decode_generation = 0;
     bool have_connected_before = false;
-    bool next_observation_reinitialized = true;
     Clock::time_point fps_window_start = Clock::now();
     std::uint64_t fps_window_frames = 0;
     std::thread worker;
+    std::thread decoder_worker;
 };
 
 NoriCaptureSession::NoriCaptureSession(NoriSessionConfig config)
