@@ -20,6 +20,12 @@ struct NoriSessionConfig {
     // burst-absorption bound, not permission for unbounded latency growth.
     std::uint32_t decode_queue_depth = 256;
 
+    // Individual malformed compressed/metadata frames are recoverable stream
+    // events: discard them, expose the failure, and keep acquisition running.
+    // Escalate only after this many consecutive decode failures so a genuinely
+    // broken stream does not spin forever producing no observations.
+    std::uint32_t max_consecutive_decode_failures = 8;
+
     // A live vendor-backed capture is measured sensor evidence, but that does
     // not imply measured stereo synchronization or calibrated left/right
     // identity. Those remain explicit fields on the normalized observation.
