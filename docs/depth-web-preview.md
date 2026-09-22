@@ -43,12 +43,20 @@ freeze accepted homographies
         ↓
 warp + StereoSGBM worker, target ~10 fps
         ↓
+conservative display stabilization
+  median3 on valid disparity
+  3x3 tiny-hole closing
+  gated temporal EMA
+  one displayed-frame invalid persistence
+        ↓
 uncalibrated disparity + relative near/far heatmap
         ↓
 web panel
 ```
 
 The auto-rectification transform is estimated from live image correspondences only. It is accepted only when RANSAC support is adequate, the resulting homographies pass basic geometric sanity checks, and the median vertical correspondence residual is sufficiently small. Once accepted, the homographies are frozen until reconnect/reset rather than being re-estimated every frame.
+
+The stabilization stage is intentionally visualization-oriented and conservative. It does not turn invalid stereo evidence into calibrated geometry. Median filtering only changes already-valid disparity samples, the morphology step can fill only very small local holes, temporal blending is gated by disparity agreement, and an invalid pixel may reuse the previous displayed disparity for at most one worker frame. Temporal state resets when the rectification mode changes, source chronology moves backward, or the worker sees a large source-sequence discontinuity.
 
 Enable it with:
 
@@ -73,11 +81,15 @@ The quick worker runs downstream from capture and samples the latest available p
 
 ### Quick-depth evidence surfaced in the UI
 
-`/api/depth/status` includes both the raw and current disparity validity plus the auto-rectification diagnostics:
+`/api/depth/status` includes both the geometry validity and the display-only stabilization evidence:
 
 ```text
 raw_valid_fraction
 valid_fraction
+display_valid_fraction
+temporal_reused_fraction
+stabilized
+filter_mode
 rectified
 rectification_attempts
 rectification_matches
@@ -87,6 +99,8 @@ median_vertical_after_px
 rectification_reason
 processing_ms
 ```
+
+`valid_fraction` remains the current StereoSGBM geometry validity before display stabilization. `display_valid_fraction` may be slightly higher because the visualization filter can close tiny holes or reuse one previous displayed sample. The UI reports both instead of silently promoting display cleanup into geometric evidence.
 
 If no acceptable transform has been found, the service continues to display the raw unrectified disparity rather than manufacturing a corrected result. If an accepted transform later produces a clearly destructive valid-disparity collapse, the current frame falls back to raw disparity and reports the fallback explicitly.
 
@@ -134,7 +148,7 @@ GET /disparity.jpg
 GET /depth.jpg
 ```
 
-For quick mode, `/disparity.jpg` is the auto-rectified disparity when an accepted transform is active, otherwise the raw unrectified fallback. `/depth.jpg` is always a **relative near/far heatmap**, not metric depth. `/api/depth/status` reports `mode=quick_uncalibrated`, `metric=false`, the rectification state/evidence, source sequence, disparity validity, processing time, and explicit camera ordering.
+For quick mode, `/disparity.jpg` is the stabilized auto-rectified disparity when an accepted transform is active, otherwise the stabilized raw unrectified fallback. `/depth.jpg` is always a **relative near/far heatmap**, not metric depth. `/api/depth/status` reports `mode=quick_uncalibrated`, `metric=false`, the rectification state/evidence, source sequence, raw/current/display validity, temporal reuse, processing time, and explicit camera ordering.
 
 For calibrated mode, `/api/depth/status` reports the selected calibration/pair, source sequence, synchronization state, continuity/reset generation, validity fraction, and processed/rejected disposition.
 
@@ -144,17 +158,17 @@ The image endpoints are visualization products only. Calibrated numerical `CV_32
 
 The calibrated browser path uses `StereoDepthSnapshotProcessor` so independent status/disparity/depth HTTP requests reuse one normalized observation result instead of manufacturing duplicate-sequence chronology faults.
 
-Quick mode has its own bounded-rate background worker and cached image result. HTTP requests only read the latest cache; they do not run StereoSGBM or rectification estimation inside the request path.
+Quick mode has its own bounded-rate background worker and cached image result. HTTP requests only read the latest cache; they do not run StereoSGBM, rectification estimation, or stabilization inside the request path.
 
 ## Rejection / unavailable behavior
 
 No plausible calibrated depth image is retained or fabricated after a rejected current observation. The panel reports the consumer disposition and the image endpoint renders an explicit unavailable/rejected placeholder.
 
-Quick mode reports a waiting placeholder until a paired BGR preview exists. Rectification-search failures remain visible while raw disparity continues. Processing errors are reported explicitly rather than silently substituting a previous result.
+Quick mode reports a waiting placeholder until a paired BGR preview exists. Rectification-search failures remain visible while raw disparity continues. Processing errors are reported explicitly rather than silently substituting a previous result. A single corrupt Nori frame may create a published sequence discontinuity, but the live acquisition session is expected to drop that isolated frame and continue; quick-depth temporal state tolerates small forward sequence gaps and resets on larger chronology discontinuities.
 
 ## Evidence boundary
 
-A working quick disparity panel proves that the live stereo pair contains matchable image structure and can support an image-derived projective epipolar alignment under the current scene when auto-rectification locks. It does not prove camera calibration quality, measured stereo synchronization, or metric accuracy.
+A working quick disparity panel proves that the live stereo pair contains matchable image structure and can support an image-derived projective epipolar alignment under the current scene when auto-rectification locks. Display stabilization can make that visualization less noisy, but it does not prove camera calibration quality, measured stereo synchronization, or metric accuracy.
 
 Physical AR0234 metric-depth claims still require, at minimum:
 
