@@ -12,7 +12,7 @@ function renderEvidenceNotice(s) {
   } else if (s.source.startsWith('replay:')) {
     $('evidence-notice').textContent = 'Replay source. Recorded provenance is preserved; calibrated derived geometry still requires an explicitly selected calibration artifact.';
   } else {
-    $('evidence-notice').textContent = 'Live engineering source. Stereo/IMU data are measured source evidence. Quick depth, when enabled, remains uncalibrated relative disparity even when auto-rectification is active.';
+    $('evidence-notice').textContent = 'Live engineering source. Stereo/IMU data are measured source evidence. Quick depth, when enabled, remains uncalibrated relative disparity even when auto-rectification and display stabilization are active.';
   }
 }
 
@@ -50,13 +50,16 @@ function renderDepthStatus(d) {
 
   const quick = d.mode === 'quick_uncalibrated' || d.metric === false;
   const available = quick ? Boolean(d.available) : Boolean(d.observation_available);
-  const processed = quick ? Boolean(d.available) && !d.error : Boolean(d.processed);
+  const processed = quick ? Boolean(d.available) : Boolean(d.processed);
   const sequencePresent = quick ? Boolean(d.available) : Boolean(d.sequence_present);
 
   if (quick) {
     const rectified = Boolean(d.rectified);
+    const stabilized = Boolean(d.stabilized);
     const rawValid = Number(d.raw_valid_fraction || 0) * 100;
     const finalValid = Number(d.valid_fraction || 0) * 100;
+    const displayValid = Number(d.display_valid_fraction || d.valid_fraction || 0) * 100;
+    const temporalReused = Number(d.temporal_reused_fraction || 0) * 100;
     const before = Number(d.median_vertical_before_px || 0);
     const after = Number(d.median_vertical_after_px || 0);
     const attempts = Number(d.rectification_attempts || 0);
@@ -65,19 +68,30 @@ function renderDepthStatus(d) {
 
     $('depth-title').textContent = 'Live uncalibrated stereo depth';
     $('depth-note').textContent = rectified
-      ? 'Quick preview only: Camera B is rig-left and Camera A is rig-right. A frozen image-derived homography is auto-rectifying the pair before StereoSGBM. No intrinsics, lens model, baseline, or metric scale is applied.'
-      : 'Quick preview only: Camera B is rig-left and Camera A is rig-right. Auto-rectification is still searching or rejected, so the current display uses raw unrectified StereoSGBM. No metric scale is applied.';
-    $('disparity-caption').textContent = rectified ? 'Auto-rectified disparity' : 'Raw unrectified disparity';
-    $('depth-caption').textContent = rectified ? 'Auto-rectified relative near / far' : 'Raw relative near / far';
+      ? 'Quick preview only: Camera B is rig-left and Camera A is rig-right. A frozen image-derived homography rectifies the pair before StereoSGBM; conservative spatial cleanup and temporal smoothing affect display only. No intrinsics, lens model, baseline, or metric scale is applied.'
+      : 'Quick preview only: Camera B is rig-left and Camera A is rig-right. Auto-rectification is still searching or rejected; conservative display stabilization is applied to raw unrectified StereoSGBM only. No metric scale is applied.';
+    $('disparity-caption').textContent = rectified
+      ? (stabilized ? 'Auto-rectified stabilized disparity' : 'Auto-rectified disparity')
+      : (stabilized ? 'Raw stabilized disparity' : 'Raw unrectified disparity');
+    $('depth-caption').textContent = rectified
+      ? (stabilized ? 'Stabilized relative near / far' : 'Auto-rectified relative near / far')
+      : (stabilized ? 'Raw stabilized relative near / far' : 'Raw relative near / far');
     $('depth-calibration-label').textContent = 'Geometry mode';
     $('depth-calibration').textContent = rectified ? 'uncalibrated + auto-rectified' : 'uncalibrated raw';
     $('depth-sync').textContent = 'unverified';
     $('depth-processing').textContent = Number.isFinite(Number(d.processing_ms)) ? `${Number(d.processing_ms).toFixed(1)} ms` : '—';
-    $('depth-disposition').textContent = d.error ? 'raw_fallback' : (rectified ? 'auto_rectified' : (available ? 'quick_raw' : 'waiting'));
+    $('depth-disposition').textContent = d.error
+      ? 'raw_fallback'
+      : (rectified
+        ? (stabilized ? 'auto_rectified_stable' : 'auto_rectified')
+        : (available ? (stabilized ? 'quick_raw_stable' : 'quick_raw') : 'waiting'));
 
+    const filterSummary = stabilized
+      ? `${d.filter_mode || 'stabilized'} · display ${displayValid.toFixed(1)}% · temporal reuse ${temporalReused.toFixed(1)}%`
+      : 'display stabilization unavailable';
     const rectificationSummary = attempts > 0
-      ? `${d.rectification_reason || 'rectification pending'} · ${matches} matches / ${inliers} inliers · vertical ${before.toFixed(2)}→${after.toFixed(2)} px · valid ${rawValid.toFixed(1)}→${finalValid.toFixed(1)}%`
-      : 'waiting for first auto-rectification attempt';
+      ? `${d.rectification_reason || 'rectification pending'} · ${matches} matches / ${inliers} inliers · vertical ${before.toFixed(2)}→${after.toFixed(2)} px · geometry valid ${rawValid.toFixed(1)}→${finalValid.toFixed(1)}% · ${filterSummary}`
+      : `waiting for first auto-rectification attempt · ${filterSummary}`;
     $('depth-reason').textContent = d.error ? `${d.error} · ${rectificationSummary}` : rectificationSummary;
   } else {
     $('depth-title').textContent = 'Calibrated stereo depth';
@@ -93,7 +107,13 @@ function renderDepthStatus(d) {
   }
 
   $('depth-sequence').textContent = sequencePresent ? Number(d.sequence || 0).toLocaleString() : '—';
-  $('depth-valid').textContent = processed ? `${(Number(d.valid_fraction || 0) * 100).toFixed(1)}%` : '—';
+  if (quick && processed) {
+    const geometryValid = Number(d.valid_fraction || 0) * 100;
+    const displayValid = Number(d.display_valid_fraction || d.valid_fraction || 0) * 100;
+    $('depth-valid').textContent = `${geometryValid.toFixed(1)}% geom · ${displayValid.toFixed(1)}% display`;
+  } else {
+    $('depth-valid').textContent = processed ? `${(Number(d.valid_fraction || 0) * 100).toFixed(1)}%` : '—';
+  }
 
   if (available && d.revision !== lastDepthRevision) {
     const stamp = `${d.revision}-${Date.now()}`;
