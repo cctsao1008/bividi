@@ -18,6 +18,12 @@ int main() {
                       << std::dec << std::setfill(' ') << '\n';
             std::cout << "  manufacturer: " << device.manufacturer << '\n';
             std::cout << "  serial:       " << device.serial << '\n';
+            std::cout << "  USB BCD:      0x"
+                      << std::hex << std::setfill('0') << std::setw(4) << device.usb_bcd
+                      << std::dec << std::setfill(' ') << '\n';
+            std::cout << "  device BCD:   0x"
+                      << std::hex << std::setfill('0') << std::setw(4) << device.device_bcd
+                      << std::dec << std::setfill(' ') << '\n';
             std::cout << "  SDK:          " << device.version.sdk_version << '\n';
             std::cout << "  device type:  " << device.version.device_type << '\n';
             std::cout << "  ISP:          " << device.version.isp_version << '\n';
