@@ -10,9 +10,9 @@ function renderEvidenceNotice(s) {
   if (s.source === 'synthetic') {
     $('evidence-notice').textContent = 'Synthetic UI source. Preview quality, timing, disparity, and depth are not AR0234 measurements.';
   } else if (s.source.startsWith('replay:')) {
-    $('evidence-notice').textContent = 'Replay source. Recorded provenance is preserved; any derived geometry shown below is computed from the explicitly selected calibration artifact and is not a new physical synchronization or accuracy claim.';
+    $('evidence-notice').textContent = 'Replay source. Recorded provenance is preserved; calibrated derived geometry still requires an explicitly selected calibration artifact.';
   } else {
-    $('evidence-notice').textContent = 'Live engineering source. Camera/IMU data shown here remain source evidence; derived geometry requires an explicitly selected calibration artifact and separate measured validation.';
+    $('evidence-notice').textContent = 'Live engineering source. Stereo/IMU data are measured source evidence. Quick depth, when enabled, is uncalibrated relative disparity only.';
   }
 }
 
@@ -48,15 +48,39 @@ function renderDepthStatus(d) {
     return;
   }
 
-  $('depth-disposition').textContent = d.disposition || 'waiting';
-  $('depth-calibration').textContent = d.calibration_id || '—';
-  $('depth-sequence').textContent = d.sequence_present ? d.sequence.toLocaleString() : '—';
-  $('depth-sync').textContent = d.synchronization || '—';
-  $('depth-valid').textContent = d.processed ? `${(Number(d.valid_fraction || 0) * 100).toFixed(1)}%` : '—';
-  $('depth-reset').textContent = d.observation_available ? String(d.reset_generation ?? '—') : '—';
-  $('depth-reason').textContent = d.reason || (d.processed ? 'accepted' : '—');
+  const quick = d.mode === 'quick_uncalibrated' || d.metric === false;
+  const available = quick ? Boolean(d.available) : Boolean(d.observation_available);
+  const processed = quick ? Boolean(d.available) && !d.error : Boolean(d.processed);
+  const sequencePresent = quick ? Boolean(d.available) : Boolean(d.sequence_present);
 
-  if (d.observation_available && d.revision !== lastDepthRevision) {
+  if (quick) {
+    $('depth-title').textContent = 'Live uncalibrated stereo depth';
+    $('depth-note').textContent = 'Quick preview only: Camera B is treated as rig-left and Camera A as rig-right. No rectification, intrinsics, baseline, or metric scale is applied; use this to inspect live relative near/far structure only.';
+    $('disparity-caption').textContent = 'Uncalibrated disparity';
+    $('depth-caption').textContent = 'Relative near / far heatmap';
+    $('depth-calibration-label').textContent = 'Geometry mode';
+    $('depth-calibration').textContent = 'uncalibrated';
+    $('depth-sync').textContent = 'unverified';
+    $('depth-processing').textContent = Number.isFinite(Number(d.processing_ms)) ? `${Number(d.processing_ms).toFixed(1)} ms` : '—';
+    $('depth-disposition').textContent = d.error ? 'processing_error' : (available ? 'quick_uncalibrated' : 'waiting');
+    $('depth-reason').textContent = d.error || 'relative disparity only';
+  } else {
+    $('depth-title').textContent = 'Calibrated stereo depth';
+    $('depth-note').textContent = 'Visualization products derived from the selected calibration artifact and normalized source observation. Numeric float disparity/depth remains the authoritative geometry result.';
+    $('disparity-caption').textContent = 'Disparity preview';
+    $('depth-caption').textContent = 'Metric depth preview';
+    $('depth-calibration-label').textContent = 'Calibration';
+    $('depth-calibration').textContent = d.calibration_id || '—';
+    $('depth-sync').textContent = d.synchronization || '—';
+    $('depth-processing').textContent = 'calibrated';
+    $('depth-disposition').textContent = d.disposition || 'waiting';
+    $('depth-reason').textContent = d.reason || (processed ? 'accepted' : '—');
+  }
+
+  $('depth-sequence').textContent = sequencePresent ? Number(d.sequence || 0).toLocaleString() : '—';
+  $('depth-valid').textContent = processed ? `${(Number(d.valid_fraction || 0) * 100).toFixed(1)}%` : '—';
+
+  if (available && d.revision !== lastDepthRevision) {
     const stamp = `${d.revision}-${Date.now()}`;
     $('disparity-image').src = `/disparity.jpg?v=${stamp}`;
     $('depth-image').src = `/depth.jpg?v=${stamp}`;
@@ -64,7 +88,7 @@ function renderDepthStatus(d) {
   }
 }
 
-async function refresh() {
+async function refreshStatus() {
   try {
     renderStatus(await api('/api/status'));
   } catch (error) {
@@ -72,13 +96,19 @@ async function refresh() {
     $('state-dot').classList.add('paused');
     $('last-action').textContent = error.message;
   }
+}
 
+async function refreshDepth() {
   try {
     renderDepthStatus(await api('/api/depth/status'));
   } catch (error) {
     $('depth-panel').classList.add('hidden');
     lastDepthRevision = -1;
   }
+}
+
+async function refresh() {
+  await Promise.all([refreshStatus(), refreshDepth()]);
 }
 
 $('capture').addEventListener('click', async () => renderStatus(await api('/api/capture/toggle', {method: 'POST'})));
@@ -110,4 +140,5 @@ $('gain').addEventListener('input', (event) => {
 });
 
 refresh();
-setInterval(refresh, 500);
+setInterval(refreshStatus, 500);
+setInterval(refreshDepth, 150);
