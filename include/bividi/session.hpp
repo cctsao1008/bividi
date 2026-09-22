@@ -38,14 +38,20 @@ struct SourceContinuityStatus {
     std::uint64_t out_of_order = 0;
 };
 
-// Bounded producer/consumer queue evidence. A zero capacity means the session
-// implementation does not expose a decode queue (for example synthetic/replay).
+// Bounded producer/consumer queue evidence plus per-frame decode disposition.
+// A zero capacity means the session implementation does not expose a decode
+// queue (for example synthetic/replay). Decode failures count compressed or
+// normalized frames that were deliberately discarded instead of being allowed
+// to poison or terminate an otherwise healthy live stream.
 struct DecodeQueueStatus {
     std::uint32_t capacity = 0;
     std::uint32_t occupancy = 0;
     std::uint32_t high_watermark = 0;
     std::uint64_t overflows = 0;
     std::uint64_t flushed_frames = 0;
+    std::uint64_t decode_failures = 0;
+    std::uint32_t consecutive_decode_failures = 0;
+    std::uint32_t max_consecutive_decode_failures = 0;
 };
 
 // Lightweight engineering/runtime status shared by viewer and web front ends.
