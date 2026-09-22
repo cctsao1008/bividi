@@ -6,6 +6,7 @@
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
+#include <opencv2/features2d.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -24,14 +25,54 @@
 
 namespace bividi_web {
 
-struct QuickDepthResult {
+struct QuickDisparityPreview {
     bool available = false;
-    std::uint64_t revision = 0;
-    std::uint64_t source_sequence = 0;
     double valid_fraction = 0.0;
-    double processing_ms = 0.0;
     cv::Mat disparity_preview;
     cv::Mat proximity_preview;
+    std::string error;
+};
+
+struct QuickRectificationEstimate {
+    bool accepted = false;
+    int matches = 0;
+    int inliers = 0;
+    double median_vertical_before_px = 0.0;
+    double median_vertical_after_px = 0.0;
+    cv::Mat left_h;
+    cv::Mat right_h;
+    std::string reason;
+};
+
+struct QuickRectificationState {
+    bool ready = false;
+    std::uint64_t attempts = 0;
+    int matches = 0;
+    int inliers = 0;
+    double median_vertical_before_px = 0.0;
+    double median_vertical_after_px = 0.0;
+    cv::Mat left_h;
+    cv::Mat right_h;
+    std::string reason = "searching for a stable epipolar transform";
+};
+
+struct QuickDepthResult {
+    bool available = false;
+    bool rectified = false;
+    std::uint64_t revision = 0;
+    std::uint64_t source_sequence = 0;
+    double raw_valid_fraction = 0.0;
+    double valid_fraction = 0.0;
+    double processing_ms = 0.0;
+    std::uint64_t rectification_attempts = 0;
+    int rectification_matches = 0;
+    int rectification_inliers = 0;
+    double median_vertical_before_px = 0.0;
+    double median_vertical_after_px = 0.0;
+    cv::Mat raw_disparity_preview;
+    cv::Mat disparity_preview;
+    cv::Mat proximity_preview;
+    std::string rectification_reason;
     std::string error;
 };
 
@@ -55,13 +96,11 @@ inline cv::Mat quick_depth_gray_view(const bividi::ImageView& view, int width, i
     return gray;
 }
 
-inline QuickDepthResult compute_quick_depth_pair(
+inline QuickDisparityPreview compute_quick_disparity(
     const cv::Mat& left_gray,
     const cv::Mat& right_gray,
-    std::uint64_t sequence,
     int num_disparities = 160) {
-    QuickDepthResult out;
-    out.source_sequence = sequence;
+    QuickDisparityPreview out;
 
     if (left_gray.empty() || right_gray.empty() ||
         left_gray.type() != CV_8UC1 || right_gray.type() != CV_8UC1 ||
@@ -110,20 +149,203 @@ inline QuickDepthResult compute_quick_depth_pair(
     scaled.convertTo(disparity8, CV_8UC1);
     disparity8.setTo(0, ~valid);
 
-    cv::Mat disparity_color;
-    cv::applyColorMap(disparity8, disparity_color, cv::COLORMAP_TURBO);
-    disparity_color.setTo(cv::Scalar(0, 0, 0), ~valid);
+    cv::applyColorMap(disparity8, out.disparity_preview, cv::COLORMAP_TURBO);
+    out.disparity_preview.setTo(cv::Scalar(0, 0, 0), ~valid);
 
-    // This is deliberately a relative near/far visualization, not metric depth.
-    // Larger disparity means closer structure, so the same fixed-scale disparity
-    // drives a proximity heatmap without inventing focal length or baseline.
-    cv::Mat proximity_color;
-    cv::applyColorMap(disparity8, proximity_color, cv::COLORMAP_JET);
-    proximity_color.setTo(cv::Scalar(0, 0, 0), ~valid);
+    // Deliberately relative only: larger disparity is rendered as closer
+    // structure without inventing focal length, baseline, or metric scale.
+    cv::applyColorMap(disparity8, out.proximity_preview, cv::COLORMAP_JET);
+    out.proximity_preview.setTo(cv::Scalar(0, 0, 0), ~valid);
 
-    out.disparity_preview = std::move(disparity_color);
-    out.proximity_preview = std::move(proximity_color);
     out.available = true;
+    return out;
+}
+
+inline double median_vertical_error(
+    const std::vector<cv::Point2f>& left,
+    const std::vector<cv::Point2f>& right) {
+    if (left.empty() || left.size() != right.size()) return 0.0;
+    std::vector<double> errors;
+    errors.reserve(left.size());
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        errors.push_back(std::abs(static_cast<double>(left[i].y - right[i].y)));
+    }
+    const auto middle = errors.begin() + static_cast<std::ptrdiff_t>(errors.size() / 2);
+    std::nth_element(errors.begin(), middle, errors.end());
+    return *middle;
+}
+
+inline bool quick_rectification_homography_sane(const cv::Mat& h, const cv::Size size) {
+    if (h.empty() || h.rows != 3 || h.cols != 3) return false;
+    const double determinant = cv::determinant(h);
+    if (!std::isfinite(determinant) || std::abs(determinant) < 1e-9) return false;
+
+    std::vector<cv::Point2f> corners{
+        {0.0f, 0.0f},
+        {static_cast<float>(size.width - 1), 0.0f},
+        {static_cast<float>(size.width - 1), static_cast<float>(size.height - 1)},
+        {0.0f, static_cast<float>(size.height - 1)},
+    };
+    std::vector<cv::Point2f> warped;
+    cv::perspectiveTransform(corners, warped, h);
+    if (warped.size() != corners.size()) return false;
+
+    for (const auto& point : warped) {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y)) return false;
+        if (point.x < -2.0f * size.width || point.x > 3.0f * size.width ||
+            point.y < -2.0f * size.height || point.y > 3.0f * size.height) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline QuickRectificationEstimate estimate_quick_rectification(
+    const cv::Mat& left_gray,
+    const cv::Mat& right_gray) {
+    QuickRectificationEstimate out;
+    if (left_gray.empty() || right_gray.empty() ||
+        left_gray.type() != CV_8UC1 || right_gray.type() != CV_8UC1 ||
+        left_gray.size() != right_gray.size()) {
+        out.reason = "rectification requires equal-size grayscale images";
+        return out;
+    }
+
+    cv::Mat left_features;
+    cv::Mat right_features;
+    auto clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+    clahe->apply(left_gray, left_features);
+    clahe->apply(right_gray, right_features);
+
+    std::vector<cv::KeyPoint> left_keypoints;
+    std::vector<cv::KeyPoint> right_keypoints;
+    cv::Mat left_descriptors;
+    cv::Mat right_descriptors;
+    auto orb = cv::ORB::create(1800);
+    orb->detectAndCompute(left_features, cv::noArray(), left_keypoints, left_descriptors);
+    orb->detectAndCompute(right_features, cv::noArray(), right_keypoints, right_descriptors);
+    if (left_descriptors.empty() || right_descriptors.empty()) {
+        out.reason = "insufficient ORB features";
+        return out;
+    }
+
+    cv::BFMatcher matcher(cv::NORM_HAMMING, false);
+    std::vector<std::vector<cv::DMatch>> knn;
+    matcher.knnMatch(left_descriptors, right_descriptors, knn, 2);
+
+    std::vector<cv::Point2f> left_points;
+    std::vector<cv::Point2f> right_points;
+    left_points.reserve(knn.size());
+    right_points.reserve(knn.size());
+    for (const auto& pair : knn) {
+        if (pair.size() < 2) continue;
+        if (!(pair[0].distance < 0.75f * pair[1].distance)) continue;
+        const auto& lp = left_keypoints[static_cast<std::size_t>(pair[0].queryIdx)].pt;
+        const auto& rp = right_keypoints[static_cast<std::size_t>(pair[0].trainIdx)].pt;
+        // The delivered stereo rig is close to horizontal already. Reject only
+        // grossly implausible cross-image matches; do not force a calibrated model.
+        if (std::abs(lp.y - rp.y) > left_gray.rows * 0.25f) continue;
+        left_points.push_back(lp);
+        right_points.push_back(rp);
+    }
+    out.matches = static_cast<int>(left_points.size());
+    if (out.matches < 40) {
+        out.reason = "fewer than 40 ratio-tested stereo matches";
+        return out;
+    }
+
+    cv::Mat inlier_mask;
+    const cv::Mat fundamental = cv::findFundamentalMat(
+        left_points,
+        right_points,
+        cv::FM_RANSAC,
+        1.5,
+        0.995,
+        inlier_mask);
+    if (fundamental.empty() || inlier_mask.empty()) {
+        out.reason = "RANSAC fundamental-matrix estimation failed";
+        return out;
+    }
+
+    std::vector<cv::Point2f> left_inliers;
+    std::vector<cv::Point2f> right_inliers;
+    for (int i = 0; i < inlier_mask.rows; ++i) {
+        if (inlier_mask.at<unsigned char>(i, 0) == 0) continue;
+        left_inliers.push_back(left_points[static_cast<std::size_t>(i)]);
+        right_inliers.push_back(right_points[static_cast<std::size_t>(i)]);
+    }
+    out.inliers = static_cast<int>(left_inliers.size());
+    if (out.inliers < 30 || out.inliers * 100 < out.matches * 35) {
+        out.reason = "fundamental-matrix inlier support is too weak";
+        return out;
+    }
+
+    out.median_vertical_before_px = median_vertical_error(left_inliers, right_inliers);
+    if (!cv::stereoRectifyUncalibrated(
+            left_inliers,
+            right_inliers,
+            fundamental,
+            left_gray.size(),
+            out.left_h,
+            out.right_h,
+            5.0)) {
+        out.reason = "stereoRectifyUncalibrated rejected the estimated geometry";
+        return out;
+    }
+
+    if (!quick_rectification_homography_sane(out.left_h, left_gray.size()) ||
+        !quick_rectification_homography_sane(out.right_h, right_gray.size())) {
+        out.reason = "estimated rectification homography is geometrically unsafe";
+        return out;
+    }
+
+    std::vector<cv::Point2f> left_rectified;
+    std::vector<cv::Point2f> right_rectified;
+    cv::perspectiveTransform(left_inliers, left_rectified, out.left_h);
+    cv::perspectiveTransform(right_inliers, right_rectified, out.right_h);
+    out.median_vertical_after_px = median_vertical_error(left_rectified, right_rectified);
+
+    if (!std::isfinite(out.median_vertical_before_px) ||
+        !std::isfinite(out.median_vertical_after_px)) {
+        out.reason = "rectification produced non-finite epipolar residuals";
+        return out;
+    }
+    if (out.median_vertical_after_px > 1.5) {
+        out.reason = "rectified median vertical residual exceeds 1.5 px";
+        return out;
+    }
+    if (out.median_vertical_before_px > 1.0 &&
+        out.median_vertical_after_px > out.median_vertical_before_px * 0.70) {
+        out.reason = "rectification does not sufficiently improve vertical alignment";
+        return out;
+    }
+    if (out.median_vertical_before_px <= 1.0 &&
+        out.median_vertical_after_px > out.median_vertical_before_px + 0.25) {
+        out.reason = "rectification worsens an already-small vertical residual";
+        return out;
+    }
+
+    out.accepted = true;
+    out.reason = "locked from ORB + RANSAC fundamental matrix";
+    return out;
+}
+
+inline QuickDepthResult compute_quick_depth_pair(
+    const cv::Mat& left_gray,
+    const cv::Mat& right_gray,
+    std::uint64_t sequence,
+    int num_disparities = 160) {
+    QuickDepthResult out;
+    out.source_sequence = sequence;
+    const auto raw = compute_quick_disparity(left_gray, right_gray, num_disparities);
+    out.available = raw.available;
+    out.raw_valid_fraction = raw.valid_fraction;
+    out.valid_fraction = raw.valid_fraction;
+    out.raw_disparity_preview = raw.disparity_preview;
+    out.disparity_preview = raw.disparity_preview;
+    out.proximity_preview = raw.proximity_preview;
+    out.error = raw.error;
+    out.rectification_reason = "raw unrectified fallback";
     return out;
 }
 
@@ -154,6 +376,7 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         last_source_sequence_ = 0;
         result_ = {};
+        rectification_ = {};
     }
 
     std::string status_json() const {
@@ -164,6 +387,7 @@ public:
             << "\"available\":" << (snapshot.available ? "true" : "false") << ','
             << "\"revision\":" << snapshot.revision << ','
             << "\"sequence\":" << snapshot.source_sequence << ','
+            << "\"raw_valid_fraction\":" << snapshot.raw_valid_fraction << ','
             << "\"valid_fraction\":" << snapshot.valid_fraction << ','
             << "\"processing_ms\":" << snapshot.processing_ms << ','
             << "\"width\":" << width_ << ','
@@ -172,7 +396,13 @@ public:
             << "\"left_camera\":\"camera_b\","
             << "\"right_camera\":\"camera_a\","
             << "\"metric\":false,"
-            << "\"rectified\":false,"
+            << "\"rectified\":" << (snapshot.rectified ? "true" : "false") << ','
+            << "\"rectification_attempts\":" << snapshot.rectification_attempts << ','
+            << "\"rectification_matches\":" << snapshot.rectification_matches << ','
+            << "\"rectification_inliers\":" << snapshot.rectification_inliers << ','
+            << "\"median_vertical_before_px\":" << snapshot.median_vertical_before_px << ','
+            << "\"median_vertical_after_px\":" << snapshot.median_vertical_after_px << ','
+            << "\"rectification_reason\":\"" << json_escape(snapshot.rectification_reason) << "\","
             << "\"error\":\"" << json_escape(snapshot.error) << "\"}";
         return out.str();
     }
@@ -181,10 +411,20 @@ public:
         const auto snapshot = latest();
         if (!snapshot.available) {
             return placeholder_jpeg(
-                proximity ? "Relative near/far preview" : "Uncalibrated disparity preview",
+                proximity ? "Relative near/far preview" : "Stereo disparity preview",
                 snapshot.error.empty() ? "waiting for paired live stereo preview" : snapshot.error);
         }
         return encode_jpeg(proximity ? snapshot.proximity_preview : snapshot.disparity_preview);
+    }
+
+    std::vector<unsigned char> raw_disparity_jpeg() const {
+        const auto snapshot = latest();
+        if (!snapshot.available || snapshot.raw_disparity_preview.empty()) {
+            return placeholder_jpeg(
+                "Raw unrectified disparity",
+                snapshot.error.empty() ? "waiting for paired live stereo preview" : snapshot.error);
+        }
+        return encode_jpeg(snapshot.raw_disparity_preview);
     }
 
 private:
@@ -206,6 +446,11 @@ private:
     QuickDepthResult latest() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return result_;
+    }
+
+    QuickRectificationState rectification_snapshot() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return rectification_;
     }
 
     static std::vector<unsigned char> encode_jpeg(const cv::Mat& image) {
@@ -235,6 +480,21 @@ private:
         result_ = std::move(next);
     }
 
+    void update_rectification(const QuickRectificationEstimate& estimate) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++rectification_.attempts;
+        rectification_.matches = estimate.matches;
+        rectification_.inliers = estimate.inliers;
+        rectification_.median_vertical_before_px = estimate.median_vertical_before_px;
+        rectification_.median_vertical_after_px = estimate.median_vertical_after_px;
+        rectification_.reason = estimate.reason;
+        if (estimate.accepted) {
+            rectification_.ready = true;
+            rectification_.left_h = estimate.left_h.clone();
+            rectification_.right_h = estimate.right_h.clone();
+        }
+    }
+
     void run() {
         const auto period = std::chrono::milliseconds(std::max(1, 1000 / target_fps_));
         while (!stop_.load()) {
@@ -250,18 +510,75 @@ private:
 
                 if (is_new) {
                     QuickDepthResult next;
+                    next.source_sequence = preview.sequence;
                     try {
                         // Physical mapping measured on the delivered rig:
                         // front-view left lens -> camera_a, front-view right lens -> camera_b.
                         // In the rig-forward convention this makes camera_b the stereo-left eye.
                         const auto left = quick_depth_gray_view(preview.camera_b, width_, height_);
                         const auto right = quick_depth_gray_view(preview.camera_a, width_, height_);
-                        next = compute_quick_depth_pair(left, right, preview.sequence, num_disparities_);
+
+                        const auto raw = compute_quick_disparity(left, right, num_disparities_);
+                        next.available = raw.available;
+                        next.raw_valid_fraction = raw.valid_fraction;
+                        next.valid_fraction = raw.valid_fraction;
+                        next.raw_disparity_preview = raw.disparity_preview;
+                        next.disparity_preview = raw.disparity_preview;
+                        next.proximity_preview = raw.proximity_preview;
+                        next.error = raw.error;
+
+                        auto rectification = rectification_snapshot();
+                        if (!rectification.ready &&
+                            (rectification.attempts == 0 || preview.sequence % 10 == 0)) {
+                            const auto estimate = estimate_quick_rectification(left, right);
+                            update_rectification(estimate);
+                            rectification = rectification_snapshot();
+                        }
+
+                        if (rectification.ready) {
+                            cv::Mat left_rectified;
+                            cv::Mat right_rectified;
+                            cv::warpPerspective(
+                                left,
+                                left_rectified,
+                                rectification.left_h,
+                                left.size(),
+                                cv::INTER_LINEAR,
+                                cv::BORDER_CONSTANT);
+                            cv::warpPerspective(
+                                right,
+                                right_rectified,
+                                rectification.right_h,
+                                right.size(),
+                                cv::INTER_LINEAR,
+                                cv::BORDER_CONSTANT);
+                            const auto corrected = compute_quick_disparity(
+                                left_rectified, right_rectified, num_disparities_);
+                            if (corrected.available) {
+                                // Guard against a mathematically plausible but practically
+                                // destructive lock. Keep raw fallback rather than displaying
+                                // a worse transform as an improvement.
+                                if (corrected.valid_fraction + 0.03 >= raw.valid_fraction * 0.80) {
+                                    next.rectified = true;
+                                    next.valid_fraction = corrected.valid_fraction;
+                                    next.disparity_preview = corrected.disparity_preview;
+                                    next.proximity_preview = corrected.proximity_preview;
+                                } else {
+                                    next.rectified = false;
+                                    next.error = "auto-rectification reduced valid disparity too aggressively; using raw fallback";
+                                }
+                            }
+                        }
+
+                        next.rectification_attempts = rectification.attempts;
+                        next.rectification_matches = rectification.matches;
+                        next.rectification_inliers = rectification.inliers;
+                        next.median_vertical_before_px = rectification.median_vertical_before_px;
+                        next.median_vertical_after_px = rectification.median_vertical_after_px;
+                        next.rectification_reason = rectification.reason;
                     } catch (const cv::Exception& error) {
-                        next.source_sequence = preview.sequence;
                         next.error = error.what();
                     } catch (const std::exception& error) {
-                        next.source_sequence = preview.sequence;
                         next.error = error.what();
                     }
                     const auto finished = std::chrono::steady_clock::now();
@@ -282,6 +599,7 @@ private:
     int num_disparities_ = 160;
     mutable std::mutex mutex_;
     QuickDepthResult result_{};
+    QuickRectificationState rectification_{};
     std::uint64_t last_source_sequence_ = 0;
     std::atomic<bool> stop_{false};
     std::thread worker_;
@@ -304,6 +622,7 @@ inline bool quick_depth_self_test() {
     return result.available &&
            result.source_sequence == 7 &&
            result.valid_fraction > 0.40 &&
+           !result.raw_disparity_preview.empty() &&
            !result.disparity_preview.empty() &&
            !result.proximity_preview.empty();
 }
