@@ -14,6 +14,24 @@ run_decxin_directshow_qualification.py
 
 This DirectShow tool is a transport/timing cross-check only. The native Nori SDK path (`bividi-nori-characterize` plus `run_ar0234_qualification.py`) remains the authoritative staged qualification path for SDK behavior, recovery, RSS, and longer soak testing.
 
+Before long soak testing, the delivered specimen now has a feature-first matrix:
+
+```text
+run_ar0234_feature_qualification.py
+  -> probe + MJPEG/YUYV raw/decode checks
+  -> compressed-JPEG integrity
+  -> IMU + calibration recorder artifacts
+  -> bounded stop/start + SDK reconnect checks
+  -> feature-results.json + report.md
+
+record_ar0234_manual_check.py
+  -> camera mapping / controls / session UI / USB / physical fault / sync evidence
+  -> manual-results.json
+  -> refresh report.md
+```
+
+The feature report deliberately keeps operator/physical checks as `PENDING` until evidence is recorded and keeps 10-minute / one-hour stability rows `DEFERRED` until the functional matrix is complete. See `docs/characterization/ar0234-feature-qualification.md`.
+
 For calibration workflows, prefer the consolidated operator entry point:
 
 ```text
