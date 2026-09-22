@@ -897,21 +897,26 @@ inline bool quick_depth_self_test() {
         return false;
     }
 
-    // Deterministic filter check: one missing pixel may persist for exactly one
-    // displayed frame and then must become invalid if it remains absent.
-    cv::Mat disparity(8, 8, CV_32F, cv::Scalar(20.0f));
-    cv::Mat mask(8, 8, CV_8UC1, cv::Scalar(255));
+    // Deterministic filter check: use a hole larger than the 3x3 spatial
+    // closing kernel so the center exercises temporal persistence rather than
+    // being repaired spatially. It may persist for exactly one displayed frame.
+    cv::Mat disparity(16, 16, CV_32F, cv::Scalar(20.0f));
+    cv::Mat mask(16, 16, CV_8UC1, cv::Scalar(255));
     QuickTemporalDisparityFilter filter;
     const auto first = filter.apply(disparity, mask, 10, false);
     if (!first.available) return false;
 
-    mask.at<unsigned char>(4, 4) = 0;
-    disparity.at<float>(4, 4) = 0.0f;
+    const cv::Rect hole(5, 5, 5, 5);
+    mask(hole).setTo(0);
+    disparity(hole).setTo(0.0f);
+    constexpr int center_x = 7;
+    constexpr int center_y = 7;
+
     const auto second = filter.apply(disparity, mask, 16, false);
-    if (second.valid_mask.at<unsigned char>(4, 4) == 0) return false;
+    if (second.valid_mask.at<unsigned char>(center_y, center_x) == 0) return false;
 
     const auto third = filter.apply(disparity, mask, 22, false);
-    return third.valid_mask.at<unsigned char>(4, 4) == 0;
+    return third.valid_mask.at<unsigned char>(center_y, center_x) == 0;
 }
 
 }  // namespace bividi_web
