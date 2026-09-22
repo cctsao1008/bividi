@@ -37,6 +37,8 @@ jobs:
         run: python tools/run_ar0234_feature_qualification.py --self-test
       - name: Feature qualification manual recorder self-test
         run: python tools/record_ar0234_manual_check.py --self-test
+      - name: YUYV diagnostic self-test
+        run: python tools/diagnose_ar0234_yuyv.py --self-test
       - name: DirectShow qualification self-test
         run: python tools/run_decxin_directshow_qualification.py --self-test
       - name: Qualification campaign comparator self-test
