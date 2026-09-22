@@ -12,6 +12,7 @@
 #include "bividi/depth.hpp"
 #include "bividi/observation_source.hpp"
 #include "bividi_web_depth.hpp"
+#include "bividi_web_quick_depth.hpp"
 #endif
 
 #include <opencv2/core.hpp>
@@ -59,9 +60,45 @@ constexpr int kPreviewHeight = 400;
 constexpr int kPreviewFps = 20;
 
 #ifdef BIVIDI_HAVE_DEPTH
-using DepthPreviewService = bividi_web::DepthPreviewService;
+class DepthService {
+public:
+    explicit DepthService(std::unique_ptr<bividi_web::DepthPreviewService> calibrated)
+        : calibrated_(std::move(calibrated)) {}
+
+    explicit DepthService(std::unique_ptr<bividi_web::QuickDepthPreviewService> quick)
+        : quick_(std::move(quick)) {}
+
+    std::string status_json() {
+        if (quick_) return quick_->status_json();
+        return calibrated_->status_json();
+    }
+
+    std::vector<unsigned char> image_jpeg(bool depth) {
+        if (quick_) return quick_->image_jpeg(depth);
+        return calibrated_->image_jpeg(depth);
+    }
+
+    void reset() {
+        if (quick_) quick_->reset();
+        if (calibrated_) calibrated_->reset();
+    }
+
+    [[nodiscard]] bool quick() const noexcept { return static_cast<bool>(quick_); }
+
+    [[nodiscard]] std::string calibration_id() const {
+        return calibrated_ ? calibrated_->calibration_id() : "none (uncalibrated)";
+    }
+
+    [[nodiscard]] std::string pair_id() const {
+        return calibrated_ ? calibrated_->pair_id() : "rig-left:camera_b / rig-right:camera_a";
+    }
+
+private:
+    std::unique_ptr<bividi_web::DepthPreviewService> calibrated_;
+    std::unique_ptr<bividi_web::QuickDepthPreviewService> quick_;
+};
 #else
-struct DepthPreviewService {};
+struct DepthService {};
 #endif
 
 const char* capture_state_name(bividi::CaptureState state) noexcept {
@@ -256,10 +293,10 @@ std::string json_status(const bividi::SessionStatus& s) {
     return out.str();
 }
 
-std::string depth_status_json(DepthPreviewService* service) {
+std::string depth_status_json(DepthService* service) {
 #ifdef BIVIDI_HAVE_DEPTH
     if (service != nullptr) return service->status_json();
-    return "{\"enabled\":false,\"reason\":\"start bividi-web with --depth-calibration PATH to enable calibrated derived geometry\"}";
+    return "{\"enabled\":false,\"reason\":\"start bividi-web with --quick-depth or --depth-calibration PATH\"}";
 #else
     (void)service;
     return "{\"enabled\":false,\"reason\":\"this build does not include bividi_depth\"}";
@@ -377,7 +414,7 @@ void stream_mjpeg(socket_t s, bividi::CaptureSession& session, bool camera_b) {
     }
 }
 
-void handle_client(socket_t client, bividi::CaptureSession& session, DepthPreviewService* depth_service) {
+void handle_client(socket_t client, bividi::CaptureSession& session, DepthService* depth_service) {
     std::string request(8192, '\0');
 #ifdef _WIN32
     const int received = recv(client, request.data(), static_cast<int>(request.size()), 0);
@@ -448,12 +485,12 @@ void handle_client(socket_t client, bividi::CaptureSession& session, DepthPrevie
     } else if (method == "GET" && (route == "/disparity.jpg" || route == "/depth.jpg")) {
 #ifdef BIVIDI_HAVE_DEPTH
         if (depth_service == nullptr) {
-            send_response(client, 404, "Not Found", "text/plain", "calibrated depth preview is not enabled");
+            send_response(client, 404, "Not Found", "text/plain", "depth preview is not enabled");
         } else {
             send_binary(client, "image/jpeg", depth_service->image_jpeg(route == "/depth.jpg"));
         }
 #else
-        send_response(client, 404, "Not Found", "text/plain", "this build does not include calibrated depth support");
+        send_response(client, 404, "Not Found", "text/plain", "this build does not include depth support");
 #endif
     } else if (method == "GET" && (route == "/stream/a.mjpg" || route == "/stream/b.mjpg")) {
         stream_mjpeg(client, session, route.find("/b.mjpg") != std::string::npos);
@@ -505,25 +542,35 @@ std::unique_ptr<bividi::CaptureSession> make_session(
     throw std::runtime_error("unknown web source: " + source);
 }
 
-std::unique_ptr<DepthPreviewService> make_depth_service(
+std::unique_ptr<DepthService> make_depth_service(
     bividi::CaptureSession& session,
     const std::string& calibration_path,
-    const std::string& pair_id) {
-    if (calibration_path.empty()) return {};
+    const std::string& pair_id,
+    bool quick_depth) {
+    if (quick_depth && !calibration_path.empty()) {
+        throw std::runtime_error("--quick-depth and --depth-calibration are mutually exclusive");
+    }
+    if (!quick_depth && calibration_path.empty()) return {};
 #ifdef BIVIDI_HAVE_DEPTH
+    if (quick_depth) {
+        return std::make_unique<DepthService>(
+            std::make_unique<bividi_web::QuickDepthPreviewService>(session));
+    }
+
     auto* source = dynamic_cast<bividi::ObservationSnapshotSource*>(&session);
     if (source == nullptr) {
         throw std::runtime_error(
-            "--depth-calibration requires a source that exposes normalized SensorObservation snapshots; "
-            "the replay source supports this boundary today");
+            "--depth-calibration requires a source that exposes normalized SensorObservation snapshots");
     }
     auto calibration = bividi::depth::load_calibration_json(calibration_path);
-    return std::make_unique<DepthPreviewService>(*source, pair_id, std::move(calibration));
+    return std::make_unique<DepthService>(
+        std::make_unique<bividi_web::DepthPreviewService>(*source, pair_id, std::move(calibration)));
 #else
     (void)session;
     (void)pair_id;
+    (void)quick_depth;
     throw std::runtime_error(
-        "--depth-calibration was requested but this build does not include bividi_depth/OpenCV calib3d");
+        "depth preview was requested but this build does not include bividi_depth/OpenCV calib3d");
 #endif
 }
 
@@ -563,6 +610,12 @@ int self_test() {
         std::cerr << "bividi-web self-test: static assets missing derived-depth surface\n";
         return 3;
     }
+#ifdef BIVIDI_HAVE_DEPTH
+    if (!bividi_web::quick_depth_self_test()) {
+        std::cerr << "bividi-web self-test: quick-depth synthetic regression failed\n";
+        return 4;
+    }
+#endif
 
     std::cout << "bividi-web self-test: PASS\n"
               << "jpeg_a=" << a.size() << " jpeg_b=" << b.size() << " static_assets=3\n";
@@ -595,12 +648,13 @@ int run_server(
     const std::string& replay_session,
     double replay_rate,
     const std::string& depth_calibration,
-    const std::string& depth_pair) {
+    const std::string& depth_pair,
+    bool quick_depth) {
     std::unique_ptr<bividi::CaptureSession> session;
-    std::unique_ptr<DepthPreviewService> depth_service;
+    std::unique_ptr<DepthService> depth_service;
     try {
         session = make_session(source, device, mode, timeout_ms, replay_session, replay_rate);
-        depth_service = make_depth_service(*session, depth_calibration, depth_pair);
+        depth_service = make_depth_service(*session, depth_calibration, depth_pair, quick_depth);
     } catch (const std::exception& error) {
         std::cerr << "bividi-web: " << error.what() << '\n';
         return 2;
@@ -648,8 +702,13 @@ int run_server(
     if (source == "replay") std::cout << " session=" << replay_session << " rate=" << replay_rate << 'x';
 #ifdef BIVIDI_HAVE_DEPTH
     if (depth_service) {
-        std::cout << " depth_calibration=" << depth_service->calibration_id()
-                  << " depth_pair=" << depth_service->pair_id();
+        if (depth_service->quick()) {
+            std::cout << " quick_depth=uncalibrated"
+                      << " pair=" << depth_service->pair_id();
+        } else {
+            std::cout << " depth_calibration=" << depth_service->calibration_id()
+                      << " depth_pair=" << depth_service->pair_id();
+        }
     }
 #endif
     std::cout << '\n';
@@ -683,12 +742,13 @@ int main(int argc, char** argv) {
     double replay_rate = 1.0;
     std::string depth_calibration;
     std::string depth_pair = "stereo0";
+    bool quick_depth = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--self-test") return self_test();
         if (arg == "--help") {
-            std::cout << "bividi-web [--listen 127.0.0.1] [--port 8080] [--source synthetic|replay|nori] [--session PATH] [--replay-rate X] [--device N] [--mode N] [--timeout-ms N] [--depth-calibration PATH] [--depth-pair stereo0] [--self-test]\n";
+            std::cout << "bividi-web [--listen 127.0.0.1] [--port 8080] [--source synthetic|replay|nori] [--session PATH] [--replay-rate X] [--device N] [--mode N] [--timeout-ms N] [--quick-depth] [--depth-calibration PATH] [--depth-pair stereo0] [--self-test]\n";
             return 0;
         }
         if (arg == "--listen" && i + 1 < argc) {
@@ -707,6 +767,8 @@ int main(int argc, char** argv) {
             mode = parse_u32(argv[++i], "mode index");
         } else if (arg == "--timeout-ms" && i + 1 < argc) {
             timeout_ms = parse_u32(argv[++i], "timeout");
+        } else if (arg == "--quick-depth") {
+            quick_depth = true;
         } else if (arg == "--depth-calibration" && i + 1 < argc) {
             depth_calibration = argv[++i];
         } else if (arg == "--depth-pair" && i + 1 < argc) {
@@ -721,6 +783,10 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (quick_depth && !depth_calibration.empty()) {
+        std::cerr << "bividi-web: --quick-depth and --depth-calibration are mutually exclusive\n";
+        return 2;
+    }
     if (port < 1 || port > 65535) {
         std::cerr << "bividi-web: port must be 1..65535\n";
         return 1;
@@ -735,5 +801,6 @@ int main(int argc, char** argv) {
         replay_session,
         replay_rate,
         depth_calibration,
-        depth_pair);
+        depth_pair,
+        quick_depth);
 }
