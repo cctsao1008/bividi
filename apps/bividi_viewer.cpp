@@ -29,7 +29,7 @@ namespace {
 constexpr char kWindowName[] = "Bividi Viewer";
 constexpr int kEyeWidth = 640;
 constexpr int kEyeHeight = 360;
-constexpr int kPanelHeight = 190;
+constexpr int kPanelHeight = 220;
 constexpr int kMaxExposureUs = 20000;
 constexpr int kMaxGainX10 = 240;
 
@@ -231,11 +231,26 @@ cv::Mat render(
           << " us  |  IMU: " << state.imu_rate_hz << " Hz";
     put_status(panel, 2, line2.str());
 
-    put_status(panel, 3, "Keys: SPACE pause/resume   T trigger   C reconnect/reset   S snapshot   Q/ESC quit");
-    put_status(panel, 4, replay
+    if (state.decode_queue.capacity != 0) {
+        std::ostringstream line3;
+        line3 << "Source: " << state.source.frames
+              << " frames  drops " << state.source.drops
+              << "  dup " << state.source.duplicates
+              << "  ooo " << state.source.out_of_order
+              << "  |  Queue: " << state.decode_queue.occupancy << '/' << state.decode_queue.capacity
+              << "  high " << state.decode_queue.high_watermark
+              << "  overflow " << state.decode_queue.overflows
+              << "  flushed " << state.decode_queue.flushed_frames;
+        put_status(panel, 3, line3.str(), 0.50);
+    } else {
+        put_status(panel, 3, "Source/decode-queue telemetry unavailable for this session", 0.50);
+    }
+
+    put_status(panel, 4, "Keys: SPACE pause/resume   T trigger   C reconnect/reset   S snapshot   Q/ESC quit");
+    put_status(panel, 5, replay
         ? "Replay: SPACE pause/resume, C restarts the recorded timeline."
         : "Trackbars: Exposure / Gain   |   Live controls are serialized through CaptureSession.");
-    put_status(panel, 5, "Last: " + state.last_action, 0.50);
+    put_status(panel, 6, "Last: " + state.last_action, 0.50);
 
     cv::Mat canvas;
     cv::vconcat(stereo, panel, canvas);
@@ -283,6 +298,10 @@ int self_test() {
     bividi::SessionStatus state;
     state.capture.state = bividi::CaptureState::running;
     state.capture.frames = 42;
+    state.source.frames = 43;
+    state.decode_queue.capacity = 256;
+    state.decode_queue.occupancy = 1;
+    state.decode_queue.high_watermark = 7;
     state.exposure_us = 7500;
     state.gain_x10 = 10;
     state.exposure_start_us = 700000;
