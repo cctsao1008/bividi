@@ -178,6 +178,9 @@ struct NoriCaptureSession::Impl {
         if (config.decode_queue_depth == 0) {
             throw std::invalid_argument("Nori decode_queue_depth must be greater than zero");
         }
+        if (config.max_consecutive_decode_failures == 0) {
+            throw std::invalid_argument("Nori max_consecutive_decode_failures must be greater than zero");
+        }
 
         state.capture.state = CaptureState::idle;
         state.source_id = source_id(config.stream);
@@ -259,6 +262,52 @@ struct NoriCaptureSession::Impl {
         }
         wake.notify_all();
         decode_wake.notify_all();
+    }
+
+    bool record_recoverable_decode_failure(std::uint64_t sequence, const std::string& message) {
+        bool fatal = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (stop) return false;
+
+            ++state.decode_queue.decode_failures;
+            ++state.decode_queue.consecutive_decode_failures;
+            state.decode_queue.max_consecutive_decode_failures = std::max(
+                state.decode_queue.max_consecutive_decode_failures,
+                state.decode_queue.consecutive_decode_failures);
+
+            std::ostringstream action;
+            action << "dropped Nori decode frame seq " << sequence << ": " << message;
+            state.last_action = action.str();
+
+            if (state.decode_queue.consecutive_decode_failures >=
+                config.max_consecutive_decode_failures) {
+                fatal = true;
+                decoder_failed = true;
+                flush_decode_queue_locked();
+                state.capture.state = CaptureState::error;
+                state.fps = 0.0;
+                std::ostringstream failure;
+                failure << "Nori decoder failed after "
+                        << state.decode_queue.consecutive_decode_failures
+                        << " consecutive frame decode failures: " << message;
+                state.last_action = failure.str();
+                latest_preview = {};
+                latest_normalized_observation = {};
+            }
+        }
+
+        if (fatal) {
+            wake.notify_all();
+            decode_wake.notify_all();
+            return false;
+        }
+        return true;
+    }
+
+    void record_decode_success() {
+        std::lock_guard<std::mutex> lock(mutex);
+        state.decode_queue.consecutive_decode_failures = 0;
     }
 
     void publish_connection(Stream& stream) {
@@ -463,6 +512,7 @@ struct NoriCaptureSession::Impl {
                 if (!capture.valid()) {
                     throw Error("Nori DECXIN pipeline produced an invalid decoded frame");
                 }
+                record_decode_success();
                 if (publish_frame(
                         capture,
                         packet.continuity_epoch,
@@ -471,8 +521,9 @@ struct NoriCaptureSession::Impl {
                     published_in_generation = true;
                 }
             } catch (const std::exception& error) {
+                const auto sequence = packet.raw.sequence;
                 packet.raw.lease.reset();
-                set_decoder_error(std::string("Nori decode failed: ") + error.what());
+                record_recoverable_decode_failure(sequence, error.what());
             } catch (...) {
                 packet.raw.lease.reset();
                 set_decoder_error("Nori decode failed: unknown exception");
