@@ -5,6 +5,7 @@
 #include "bividi/observation_source.hpp"
 #include "bividi/session.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -12,6 +13,12 @@ namespace bividi::nori {
 
 struct NoriSessionConfig {
     StreamConfig stream{};
+
+    // Live MJPEG acquisition is intentionally decoupled from OpenCV/DECXIN
+    // decode. Each vendor packet is copied into bounded owned storage, then the
+    // vendor lease is returned before decode begins. This depth is therefore a
+    // burst-absorption bound, not permission for unbounded latency growth.
+    std::uint32_t decode_queue_depth = 256;
 
     // A live vendor-backed capture is measured sensor evidence, but that does
     // not imply measured stereo synchronization or calibrated left/right
@@ -24,10 +31,11 @@ struct NoriSessionConfig {
 // Live DECXIN/Nori implementation of the shared CaptureSession boundary plus
 // an opt-in normalized SensorObservation snapshot surface.
 //
-// All vendor-SDK calls are serialized on a private worker thread. The worker
-// uses DecxinPipeline(own_output), so both the latest preview and normalized
-// observation may be retained by downstream consumers without pinning a vendor
-// capture buffer from the Nori pool.
+// All vendor-SDK calls are serialized on one private acquisition thread. Raw
+// transport packets are copied to a bounded owned queue so the vendor buffer
+// lease is returned before OpenCV/DECXIN decode runs on a second private thread.
+// The published preview/observation owns decoded storage independently of both
+// the vendor buffer pool and the compressed-packet queue.
 //
 // Camera identities remain camera_a/camera_b until physical mapping evidence is
 // established. The DECXIN pair synchronization state remains UNKNOWN; exposing
