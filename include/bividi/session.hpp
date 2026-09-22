@@ -28,10 +28,32 @@ struct StereoPreviewFrame {
     }
 };
 
+// Continuity observed at the acquisition boundary before any downstream decode
+// queue. This is intentionally separate from CaptureStatus, whose counters
+// describe frames actually published by the session.
+struct SourceContinuityStatus {
+    std::uint64_t frames = 0;
+    std::uint64_t drops = 0;
+    std::uint64_t duplicates = 0;
+    std::uint64_t out_of_order = 0;
+};
+
+// Bounded producer/consumer queue evidence. A zero capacity means the session
+// implementation does not expose a decode queue (for example synthetic/replay).
+struct DecodeQueueStatus {
+    std::uint32_t capacity = 0;
+    std::uint32_t occupancy = 0;
+    std::uint32_t high_watermark = 0;
+    std::uint64_t overflows = 0;
+    std::uint64_t flushed_frames = 0;
+};
+
 // Lightweight engineering/runtime status shared by viewer and web front ends.
 // This control/status surface does not replace SensorObservation.
 struct SessionStatus {
     CaptureStatus capture{};
+    SourceContinuityStatus source{};
+    DecodeQueueStatus decode_queue{};
     double fps = 0.0;
     double nominal_fps = 0.0;
     int exposure_us = 0;
