@@ -13,6 +13,10 @@ dependencies = []
 [project.optional-dependencies]
 mcp = ["mcp>=2,<3"]
 mcap = ["mcap>=1.3,<2"]
+calibration = [
+    "numpy>=1.24,<3",
+    "opencv-contrib-python>=4.8,<5",
+]
 
 [project.scripts]
 bividi = "bividi.cli:main"
