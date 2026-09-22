@@ -123,15 +123,17 @@ python .\tools\record_ar0234_manual_check.py `
   --interactive
 ```
 
-Or update one item explicitly:
+Or update one item explicitly. M01 was physically verified on the delivered specimen by occluding one lens at a time while viewing the live Nori preview. To avoid left/right perspective ambiguity, record the mapping in observer-facing terms:
 
 ```powershell
 python .\tools\record_ar0234_manual_check.py `
   .\artifacts\physical\nori\feature-qualification\<SESSION> `
   --id M01 `
   --status pass `
-  --note "camera_a=device-left/front-view-right; camera_b=device-right/front-view-left"
+  --note "observer facing lens side: front-view-left lens -> camera_a; front-view-right lens -> camera_b"
 ```
+
+This means that if a later stereo convention defines rig-left/rig-right from the cameras' own forward-looking direction, the left/right labels are reversed relative to observer-facing front view. Keep `camera_a` / `camera_b` as the transport identities until that coordinate convention is explicitly frozen.
 
 Each update refreshes `report.md`.
 
