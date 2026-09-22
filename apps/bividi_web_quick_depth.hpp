@@ -6,7 +6,6 @@
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
-#include <opencv2/features2d.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -74,6 +73,12 @@ struct QuickDepthResult {
     cv::Mat proximity_preview;
     std::string rectification_reason;
     std::string error;
+};
+
+struct QuickPatchMatch {
+    cv::Point2f left;
+    cv::Point2f right;
+    double score = 0.0;
 };
 
 inline cv::Mat quick_depth_gray_view(const bividi::ImageView& view, int width, int height) {
@@ -200,6 +205,70 @@ inline bool quick_rectification_homography_sane(const cv::Mat& h, const cv::Size
     return true;
 }
 
+inline std::vector<QuickPatchMatch> quick_patch_matches(
+    const cv::Mat& left_gray,
+    const cv::Mat& right_gray) {
+    cv::Mat left_features;
+    cv::Mat right_features;
+    auto clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+    clahe->apply(left_gray, left_features);
+    clahe->apply(right_gray, right_features);
+
+    std::vector<cv::Point2f> corners;
+    cv::goodFeaturesToTrack(left_features, corners, 360, 0.01, 8.0, cv::noArray(), 5);
+
+    constexpr int radius = 5;
+    constexpr int vertical_search = 40;
+    constexpr int disparity_back = 240;
+    constexpr int disparity_forward = 40;
+    std::vector<QuickPatchMatch> matches;
+    matches.reserve(corners.size());
+
+    for (const auto& point : corners) {
+        const int lx = static_cast<int>(std::lround(point.x));
+        const int ly = static_cast<int>(std::lround(point.y));
+        if (lx - radius < 0 || lx + radius >= left_features.cols ||
+            ly - radius < 0 || ly + radius >= left_features.rows) {
+            continue;
+        }
+
+        const cv::Rect patch_rect(lx - radius, ly - radius, radius * 2 + 1, radius * 2 + 1);
+        const cv::Mat patch = left_features(patch_rect);
+
+        const int center_x_min = std::max(radius, lx - disparity_back);
+        const int center_x_max = std::min(right_features.cols - radius - 1, lx + disparity_forward);
+        const int center_y_min = std::max(radius, ly - vertical_search);
+        const int center_y_max = std::min(right_features.rows - radius - 1, ly + vertical_search);
+        if (center_x_min > center_x_max || center_y_min > center_y_max) continue;
+
+        const cv::Rect search_rect(
+            center_x_min - radius,
+            center_y_min - radius,
+            center_x_max - center_x_min + radius * 2 + 1,
+            center_y_max - center_y_min + radius * 2 + 1);
+        const cv::Mat search = right_features(search_rect);
+        cv::Mat correlation;
+        cv::matchTemplate(search, patch, correlation, cv::TM_CCOEFF_NORMED);
+        double min_value = 0.0;
+        double max_value = 0.0;
+        cv::Point min_location;
+        cv::Point max_location;
+        cv::minMaxLoc(correlation, &min_value, &max_value, &min_location, &max_location);
+        if (!std::isfinite(max_value) || max_value < 0.82) continue;
+
+        const cv::Point2f right_point(
+            static_cast<float>(search_rect.x + max_location.x + radius),
+            static_cast<float>(search_rect.y + max_location.y + radius));
+        matches.push_back({point, right_point, max_value});
+    }
+
+    std::sort(matches.begin(), matches.end(), [](const QuickPatchMatch& a, const QuickPatchMatch& b) {
+        return a.score > b.score;
+    });
+    if (matches.size() > 220) matches.resize(220);
+    return matches;
+}
+
 inline QuickRectificationEstimate estimate_quick_rectification(
     const cv::Mat& left_gray,
     const cv::Mat& right_gray) {
@@ -211,47 +280,20 @@ inline QuickRectificationEstimate estimate_quick_rectification(
         return out;
     }
 
-    cv::Mat left_features;
-    cv::Mat right_features;
-    auto clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
-    clahe->apply(left_gray, left_features);
-    clahe->apply(right_gray, right_features);
-
-    std::vector<cv::KeyPoint> left_keypoints;
-    std::vector<cv::KeyPoint> right_keypoints;
-    cv::Mat left_descriptors;
-    cv::Mat right_descriptors;
-    auto orb = cv::ORB::create(1800);
-    orb->detectAndCompute(left_features, cv::noArray(), left_keypoints, left_descriptors);
-    orb->detectAndCompute(right_features, cv::noArray(), right_keypoints, right_descriptors);
-    if (left_descriptors.empty() || right_descriptors.empty()) {
-        out.reason = "insufficient ORB features";
+    const auto matches = quick_patch_matches(left_gray, right_gray);
+    out.matches = static_cast<int>(matches.size());
+    if (out.matches < 40) {
+        out.reason = "fewer than 40 high-correlation stereo patch matches";
         return out;
     }
-
-    cv::BFMatcher matcher(cv::NORM_HAMMING, false);
-    std::vector<std::vector<cv::DMatch>> knn;
-    matcher.knnMatch(left_descriptors, right_descriptors, knn, 2);
 
     std::vector<cv::Point2f> left_points;
     std::vector<cv::Point2f> right_points;
-    left_points.reserve(knn.size());
-    right_points.reserve(knn.size());
-    for (const auto& pair : knn) {
-        if (pair.size() < 2) continue;
-        if (!(pair[0].distance < 0.75f * pair[1].distance)) continue;
-        const auto& lp = left_keypoints[static_cast<std::size_t>(pair[0].queryIdx)].pt;
-        const auto& rp = right_keypoints[static_cast<std::size_t>(pair[0].trainIdx)].pt;
-        // The delivered stereo rig is close to horizontal already. Reject only
-        // grossly implausible cross-image matches; do not force a calibrated model.
-        if (std::abs(lp.y - rp.y) > left_gray.rows * 0.25f) continue;
-        left_points.push_back(lp);
-        right_points.push_back(rp);
-    }
-    out.matches = static_cast<int>(left_points.size());
-    if (out.matches < 40) {
-        out.reason = "fewer than 40 ratio-tested stereo matches";
-        return out;
+    left_points.reserve(matches.size());
+    right_points.reserve(matches.size());
+    for (const auto& match : matches) {
+        left_points.push_back(match.left);
+        right_points.push_back(match.right);
     }
 
     cv::Mat inlier_mask;
@@ -269,8 +311,9 @@ inline QuickRectificationEstimate estimate_quick_rectification(
 
     std::vector<cv::Point2f> left_inliers;
     std::vector<cv::Point2f> right_inliers;
-    for (int i = 0; i < inlier_mask.rows; ++i) {
-        if (inlier_mask.at<unsigned char>(i, 0) == 0) continue;
+    const int mask_count = static_cast<int>(inlier_mask.total());
+    for (int i = 0; i < mask_count; ++i) {
+        if (inlier_mask.ptr<unsigned char>()[i] == 0) continue;
         left_inliers.push_back(left_points[static_cast<std::size_t>(i)]);
         right_inliers.push_back(right_points[static_cast<std::size_t>(i)]);
     }
@@ -326,7 +369,7 @@ inline QuickRectificationEstimate estimate_quick_rectification(
     }
 
     out.accepted = true;
-    out.reason = "locked from ORB + RANSAC fundamental matrix";
+    out.reason = "locked from GFTT + NCC patch matches + RANSAC fundamental matrix";
     return out;
 }
 
