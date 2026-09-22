@@ -27,9 +27,19 @@ namespace bividi_web {
 struct QuickDisparityPreview {
     bool available = false;
     double valid_fraction = 0.0;
+    cv::Mat disparity;
+    cv::Mat valid_mask;
     cv::Mat disparity_preview;
     cv::Mat proximity_preview;
     std::string error;
+};
+
+struct QuickFilteredDisparity {
+    bool available = false;
+    double display_valid_fraction = 0.0;
+    double temporal_reused_fraction = 0.0;
+    cv::Mat disparity;
+    cv::Mat valid_mask;
 };
 
 struct QuickRectificationEstimate {
@@ -58,10 +68,13 @@ struct QuickRectificationState {
 struct QuickDepthResult {
     bool available = false;
     bool rectified = false;
+    bool stabilized = false;
     std::uint64_t revision = 0;
     std::uint64_t source_sequence = 0;
     double raw_valid_fraction = 0.0;
     double valid_fraction = 0.0;
+    double display_valid_fraction = 0.0;
+    double temporal_reused_fraction = 0.0;
     double processing_ms = 0.0;
     std::uint64_t rectification_attempts = 0;
     int rectification_matches = 0;
@@ -99,6 +112,41 @@ inline cv::Mat quick_depth_gray_view(const bividi::ImageView& view, int width, i
     cv::Mat gray;
     cv::cvtColor(resized, gray, cv::COLOR_BGR2GRAY);
     return gray;
+}
+
+inline void render_quick_disparity(
+    const cv::Mat& disparity,
+    const cv::Mat& valid_mask,
+    int num_disparities,
+    cv::Mat& disparity_preview,
+    cv::Mat& proximity_preview) {
+    if (disparity.empty() || valid_mask.empty()) {
+        disparity_preview.release();
+        proximity_preview.release();
+        return;
+    }
+
+    cv::Mat disparity8(disparity.size(), CV_8UC1, cv::Scalar(0));
+    cv::Mat scaled;
+    disparity.convertTo(
+        scaled,
+        CV_32F,
+        255.0 / static_cast<double>(std::max(1, num_disparities)));
+    cv::min(scaled, 255.0, scaled);
+    cv::max(scaled, 0.0, scaled);
+    scaled.convertTo(disparity8, CV_8UC1);
+
+    cv::Mat invalid_mask;
+    cv::bitwise_not(valid_mask, invalid_mask);
+    disparity8.setTo(0, invalid_mask);
+
+    cv::applyColorMap(disparity8, disparity_preview, cv::COLORMAP_TURBO);
+    disparity_preview.setTo(cv::Scalar(0, 0, 0), invalid_mask);
+
+    // Deliberately relative only: larger disparity is rendered as closer
+    // structure without inventing focal length, baseline, or metric scale.
+    cv::applyColorMap(disparity8, proximity_preview, cv::COLORMAP_JET);
+    proximity_preview.setTo(cv::Scalar(0, 0, 0), invalid_mask);
 }
 
 inline QuickDisparityPreview compute_quick_disparity(
@@ -139,32 +187,175 @@ inline QuickDisparityPreview compute_quick_disparity(
 
     cv::Mat disparity16;
     matcher->compute(left_gray, right_gray, disparity16);
+    disparity16.convertTo(out.disparity, CV_32F, 1.0 / 16.0);
+    out.valid_mask = out.disparity > 1.0f;
+    out.valid_fraction = static_cast<double>(cv::countNonZero(out.valid_mask)) /
+                         static_cast<double>(out.valid_mask.total());
 
-    cv::Mat disparity;
-    disparity16.convertTo(disparity, CV_32F, 1.0 / 16.0);
-    const cv::Mat valid = disparity > 1.0f;
-    out.valid_fraction = static_cast<double>(cv::countNonZero(valid)) /
-                         static_cast<double>(valid.total());
-
-    cv::Mat disparity8(disparity.size(), CV_8UC1, cv::Scalar(0));
-    cv::Mat scaled;
-    disparity.convertTo(scaled, CV_32F, 255.0 / static_cast<double>(num_disparities));
-    cv::min(scaled, 255.0, scaled);
-    cv::max(scaled, 0.0, scaled);
-    scaled.convertTo(disparity8, CV_8UC1);
-    disparity8.setTo(0, ~valid);
-
-    cv::applyColorMap(disparity8, out.disparity_preview, cv::COLORMAP_TURBO);
-    out.disparity_preview.setTo(cv::Scalar(0, 0, 0), ~valid);
-
-    // Deliberately relative only: larger disparity is rendered as closer
-    // structure without inventing focal length, baseline, or metric scale.
-    cv::applyColorMap(disparity8, out.proximity_preview, cv::COLORMAP_JET);
-    out.proximity_preview.setTo(cv::Scalar(0, 0, 0), ~valid);
+    render_quick_disparity(
+        out.disparity,
+        out.valid_mask,
+        num_disparities,
+        out.disparity_preview,
+        out.proximity_preview);
 
     out.available = true;
     return out;
 }
+
+inline QuickFilteredDisparity spatial_cleanup_quick_disparity(
+    const cv::Mat& disparity,
+    const cv::Mat& valid_mask) {
+    QuickFilteredDisparity out;
+    if (disparity.empty() || valid_mask.empty() ||
+        disparity.type() != CV_32F || valid_mask.type() != CV_8UC1 ||
+        disparity.size() != valid_mask.size()) {
+        return out;
+    }
+
+    // Median only modifies already-valid samples. A 3x3 closing may recover
+    // tiny one-pixel holes, but large invalid regions remain invalid.
+    cv::Mat median;
+    cv::medianBlur(disparity, median, 3);
+    out.disparity = disparity.clone();
+    median.copyTo(out.disparity, valid_mask);
+
+    const cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
+    cv::Mat closed_mask;
+    cv::morphologyEx(valid_mask, closed_mask, cv::MORPH_CLOSE, kernel);
+
+    cv::Mat positive_median = median > 1.0f;
+    cv::bitwise_and(closed_mask, positive_median, closed_mask);
+
+    cv::Mat invalid_mask;
+    cv::bitwise_not(valid_mask, invalid_mask);
+    cv::Mat small_holes;
+    cv::bitwise_and(closed_mask, invalid_mask, small_holes);
+    median.copyTo(out.disparity, small_holes);
+
+    cv::bitwise_or(valid_mask, small_holes, out.valid_mask);
+    cv::Mat output_invalid;
+    cv::bitwise_not(out.valid_mask, output_invalid);
+    out.disparity.setTo(0.0f, output_invalid);
+
+    out.display_valid_fraction =
+        static_cast<double>(cv::countNonZero(out.valid_mask)) /
+        static_cast<double>(out.valid_mask.total());
+    out.available = true;
+    return out;
+}
+
+class QuickTemporalDisparityFilter {
+public:
+    void reset() {
+        initialized_ = false;
+        previous_disparity_.release();
+        previous_valid_mask_.release();
+        previous_age_.release();
+        last_sequence_ = 0;
+        last_rectified_ = false;
+    }
+
+    QuickFilteredDisparity apply(
+        const cv::Mat& disparity,
+        const cv::Mat& valid_mask,
+        std::uint64_t sequence,
+        bool rectified) {
+        auto current = spatial_cleanup_quick_disparity(disparity, valid_mask);
+        if (!current.available) return current;
+
+        const bool discontinuity =
+            !initialized_ ||
+            previous_disparity_.size() != current.disparity.size() ||
+            rectified != last_rectified_ ||
+            sequence <= last_sequence_ ||
+            sequence - last_sequence_ > 30;
+
+        if (discontinuity) {
+            initialize_from(current, sequence, rectified);
+            return current;
+        }
+
+        QuickFilteredDisparity out;
+        out.available = true;
+        out.disparity = cv::Mat(current.disparity.size(), CV_32F, cv::Scalar(0));
+        out.valid_mask = cv::Mat(current.valid_mask.size(), CV_8UC1, cv::Scalar(0));
+        cv::Mat next_age(current.valid_mask.size(), CV_8UC1, cv::Scalar(255));
+
+        std::uint64_t reused = 0;
+        constexpr float current_weight = 0.72f;
+        constexpr float previous_weight = 1.0f - current_weight;
+        constexpr float blend_gate_disparity_px = 6.0f;
+        constexpr unsigned char persistence_frames = 1;
+
+        for (int y = 0; y < current.disparity.rows; ++y) {
+            const auto* current_d = current.disparity.ptr<float>(y);
+            const auto* current_m = current.valid_mask.ptr<unsigned char>(y);
+            const auto* previous_d = previous_disparity_.ptr<float>(y);
+            const auto* previous_m = previous_valid_mask_.ptr<unsigned char>(y);
+            const auto* previous_age = previous_age_.ptr<unsigned char>(y);
+            auto* output_d = out.disparity.ptr<float>(y);
+            auto* output_m = out.valid_mask.ptr<unsigned char>(y);
+            auto* output_age = next_age.ptr<unsigned char>(y);
+
+            for (int x = 0; x < current.disparity.cols; ++x) {
+                if (current_m[x] != 0) {
+                    float value = current_d[x];
+                    if (previous_m[x] != 0 &&
+                        std::abs(current_d[x] - previous_d[x]) <= blend_gate_disparity_px) {
+                        value = current_weight * current_d[x] + previous_weight * previous_d[x];
+                    }
+                    output_d[x] = value;
+                    output_m[x] = 255;
+                    output_age[x] = 0;
+                } else if (previous_m[x] != 0 && previous_age[x] < persistence_frames) {
+                    // One displayed frame of persistence suppresses isolated
+                    // flicker without allowing stale geometry to live forever.
+                    output_d[x] = previous_d[x];
+                    output_m[x] = 255;
+                    output_age[x] = static_cast<unsigned char>(previous_age[x] + 1);
+                    ++reused;
+                }
+            }
+        }
+
+        out.display_valid_fraction =
+            static_cast<double>(cv::countNonZero(out.valid_mask)) /
+            static_cast<double>(out.valid_mask.total());
+        out.temporal_reused_fraction =
+            static_cast<double>(reused) /
+            static_cast<double>(out.valid_mask.total());
+
+        previous_disparity_ = out.disparity.clone();
+        previous_valid_mask_ = out.valid_mask.clone();
+        previous_age_ = std::move(next_age);
+        last_sequence_ = sequence;
+        last_rectified_ = rectified;
+        initialized_ = true;
+        return out;
+    }
+
+private:
+    void initialize_from(
+        const QuickFilteredDisparity& current,
+        std::uint64_t sequence,
+        bool rectified) {
+        previous_disparity_ = current.disparity.clone();
+        previous_valid_mask_ = current.valid_mask.clone();
+        previous_age_ = cv::Mat(current.valid_mask.size(), CV_8UC1, cv::Scalar(255));
+        previous_age_.setTo(0, current.valid_mask);
+        last_sequence_ = sequence;
+        last_rectified_ = rectified;
+        initialized_ = true;
+    }
+
+    bool initialized_ = false;
+    bool last_rectified_ = false;
+    std::uint64_t last_sequence_ = 0;
+    cv::Mat previous_disparity_;
+    cv::Mat previous_valid_mask_;
+    cv::Mat previous_age_;
+};
 
 inline double median_vertical_error(
     const std::vector<cv::Point2f>& left,
@@ -384,6 +575,7 @@ inline QuickDepthResult compute_quick_depth_pair(
     out.available = raw.available;
     out.raw_valid_fraction = raw.valid_fraction;
     out.valid_fraction = raw.valid_fraction;
+    out.display_valid_fraction = raw.valid_fraction;
     out.raw_disparity_preview = raw.disparity_preview;
     out.disparity_preview = raw.disparity_preview;
     out.proximity_preview = raw.proximity_preview;
@@ -416,10 +608,13 @@ public:
     QuickDepthPreviewService& operator=(const QuickDepthPreviewService&) = delete;
 
     void reset() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        last_source_sequence_ = 0;
-        result_ = {};
-        rectification_ = {};
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            last_source_sequence_ = 0;
+            result_ = {};
+            rectification_ = {};
+        }
+        filter_reset_requested_.store(true);
     }
 
     std::string status_json() const {
@@ -432,6 +627,10 @@ public:
             << "\"sequence\":" << snapshot.source_sequence << ','
             << "\"raw_valid_fraction\":" << snapshot.raw_valid_fraction << ','
             << "\"valid_fraction\":" << snapshot.valid_fraction << ','
+            << "\"display_valid_fraction\":" << snapshot.display_valid_fraction << ','
+            << "\"temporal_reused_fraction\":" << snapshot.temporal_reused_fraction << ','
+            << "\"stabilized\":" << (snapshot.stabilized ? "true" : "false") << ','
+            << "\"filter_mode\":\"median3+close3+gated_ema+persistence1\","
             << "\"processing_ms\":" << snapshot.processing_ms << ','
             << "\"width\":" << width_ << ','
             << "\"height\":" << height_ << ','
@@ -542,6 +741,8 @@ private:
         const auto period = std::chrono::milliseconds(std::max(1, 1000 / target_fps_));
         while (!stop_.load()) {
             const auto started = std::chrono::steady_clock::now();
+            if (filter_reset_requested_.exchange(false)) temporal_filter_.reset();
+
             bividi::StereoPreviewFrame preview;
             if (session_.latest_stereo_preview(preview) && preview.valid()) {
                 bool is_new = false;
@@ -562,9 +763,11 @@ private:
                         const auto right = quick_depth_gray_view(preview.camera_a, width_, height_);
 
                         const auto raw = compute_quick_disparity(left, right, num_disparities_);
+                        QuickDisparityPreview selected = raw;
                         next.available = raw.available;
                         next.raw_valid_fraction = raw.valid_fraction;
                         next.valid_fraction = raw.valid_fraction;
+                        next.display_valid_fraction = raw.valid_fraction;
                         next.raw_disparity_preview = raw.disparity_preview;
                         next.disparity_preview = raw.disparity_preview;
                         next.proximity_preview = raw.proximity_preview;
@@ -604,12 +807,33 @@ private:
                                 if (corrected.valid_fraction + 0.03 >= raw.valid_fraction * 0.80) {
                                     next.rectified = true;
                                     next.valid_fraction = corrected.valid_fraction;
-                                    next.disparity_preview = corrected.disparity_preview;
-                                    next.proximity_preview = corrected.proximity_preview;
+                                    selected = corrected;
                                 } else {
                                     next.rectified = false;
                                     next.error = "auto-rectification reduced valid disparity too aggressively; using raw fallback";
                                 }
+                            }
+                        }
+
+                        if (selected.available) {
+                            const auto filtered = temporal_filter_.apply(
+                                selected.disparity,
+                                selected.valid_mask,
+                                preview.sequence,
+                                next.rectified);
+                            if (filtered.available) {
+                                next.stabilized = true;
+                                next.display_valid_fraction = filtered.display_valid_fraction;
+                                next.temporal_reused_fraction = filtered.temporal_reused_fraction;
+                                render_quick_disparity(
+                                    filtered.disparity,
+                                    filtered.valid_mask,
+                                    num_disparities_,
+                                    next.disparity_preview,
+                                    next.proximity_preview);
+                            } else {
+                                next.disparity_preview = selected.disparity_preview;
+                                next.proximity_preview = selected.proximity_preview;
                             }
                         }
 
@@ -644,6 +868,8 @@ private:
     QuickDepthResult result_{};
     QuickRectificationState rectification_{};
     std::uint64_t last_source_sequence_ = 0;
+    QuickTemporalDisparityFilter temporal_filter_{};
+    std::atomic<bool> filter_reset_requested_{false};
     std::atomic<bool> stop_{false};
     std::thread worker_;
 };
@@ -662,12 +888,30 @@ inline bool quick_depth_self_test() {
         .copyTo(right(cv::Rect(0, 0, width - disparity_px, height)));
 
     const auto result = compute_quick_depth_pair(left, right, 7, 96);
-    return result.available &&
-           result.source_sequence == 7 &&
-           result.valid_fraction > 0.40 &&
-           !result.raw_disparity_preview.empty() &&
-           !result.disparity_preview.empty() &&
-           !result.proximity_preview.empty();
+    if (!(result.available &&
+          result.source_sequence == 7 &&
+          result.valid_fraction > 0.40 &&
+          !result.raw_disparity_preview.empty() &&
+          !result.disparity_preview.empty() &&
+          !result.proximity_preview.empty())) {
+        return false;
+    }
+
+    // Deterministic filter check: one missing pixel may persist for exactly one
+    // displayed frame and then must become invalid if it remains absent.
+    cv::Mat disparity(8, 8, CV_32F, cv::Scalar(20.0f));
+    cv::Mat mask(8, 8, CV_8UC1, cv::Scalar(255));
+    QuickTemporalDisparityFilter filter;
+    const auto first = filter.apply(disparity, mask, 10, false);
+    if (!first.available) return false;
+
+    mask.at<unsigned char>(4, 4) = 0;
+    disparity.at<float>(4, 4) = 0.0f;
+    const auto second = filter.apply(disparity, mask, 16, false);
+    if (second.valid_mask.at<unsigned char>(4, 4) == 0) return false;
+
+    const auto third = filter.apply(disparity, mask, 22, false);
+    return third.valid_mask.at<unsigned char>(4, 4) == 0;
 }
 
 }  // namespace bividi_web
