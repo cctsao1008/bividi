@@ -20,7 +20,7 @@ h2 { margin: 0; font-size: clamp(1.25rem, 2vw, 1.7rem); }
 .stereo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 figure { margin: 0; border: 1px solid #303741; border-radius: 14px; overflow: hidden; background: #171b20; }
 figcaption { padding: 10px 13px; border-bottom: 1px solid #303741; color: #b9c1ca; font-size: .9rem; }
-figure img { display: block; width: 100%; aspect-ratio: 8 / 5; object-fit: cover; background: #0c0f12; }
+figure img, figure canvas { display: block; width: 100%; aspect-ratio: 8 / 5; object-fit: cover; background: #0c0f12; }
 .metrics, .derived-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
 .metrics article, .derived-metrics article { padding: 14px; border: 1px solid #303741; border-radius: 12px; background: #181d23; min-width: 0; }
 .metrics span, .derived-metrics span { display: block; color: #929daa; font-size: .78rem; margin-bottom: 6px; }
@@ -28,7 +28,7 @@ figure img { display: block; width: 100%; aspect-ratio: 8 / 5; object-fit: cover
 .derived-panel { margin-top: 18px; padding: 16px; border: 1px solid #353e48; border-radius: 14px; background: #151a20; }
 .derived-panel.hidden { display: none; }
 .section-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 8px; }
-#depth-disposition { padding: 7px 10px; border: 1px solid #39424c; border-radius: 8px; background: #1d232a; color: #dce2e8; font-size: .85rem; }
+#depth-disposition, #flow-disposition { padding: 7px 10px; border: 1px solid #39424c; border-radius: 8px; background: #1d232a; color: #dce2e8; font-size: .85rem; }
 .derived-note { margin: 0 0 14px; color: #aab4be; font-size: .9rem; line-height: 1.5; }
 .controls { margin-top: 14px; padding: 16px; border: 1px solid #303741; border-radius: 14px; background: #181d23; }
 .control-row { display: grid; grid-template-columns: 220px 1fr; align-items: center; gap: 14px; margin-bottom: 14px; }
