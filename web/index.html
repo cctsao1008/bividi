@@ -12,7 +12,7 @@
       <div>
         <p class="eyebrow">Bividi</p>
         <h1>Engineering Console</h1>
-        <p class="subtitle">Stereo preview, timing, IMU state, device controls, and optional derived stereo geometry.</p>
+        <p class="subtitle">Stereo preview, timing, IMU state, device controls, optical flow, and optional derived stereo geometry.</p>
       </div>
       <div class="status-pill"><span id="state-dot"></span><span id="state">connecting</span></div>
     </header>
@@ -20,8 +20,8 @@
     <section id="evidence-notice" class="notice">Connecting to the selected engineering source.</section>
 
     <section class="stereo-grid">
-      <figure><figcaption>Camera A</figcaption><img src="/stream/a.mjpg" alt="Camera A engineering preview"></figure>
-      <figure><figcaption>Camera B</figcaption><img src="/stream/b.mjpg" alt="Camera B engineering preview"></figure>
+      <figure><figcaption>Camera A</figcaption><img id="camera-a-image" src="/stream/a.mjpg" alt="Camera A engineering preview"></figure>
+      <figure><figcaption>Camera B</figcaption><img id="camera-b-image" src="/stream/b.mjpg" alt="Camera B engineering preview"></figure>
     </section>
 
     <section class="metrics">
@@ -31,6 +31,30 @@
       <article><span>IMU</span><strong id="imu">—</strong></article>
       <article><span>Exposure start</span><strong id="es">—</strong></article>
       <article><span>Exposure end</span><strong id="ee">—</strong></article>
+    </section>
+
+    <section id="flow-panel" class="derived-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Motion</p>
+          <h2>Live sparse optical flow</h2>
+        </div>
+        <strong id="flow-disposition">browser_block_flow</strong>
+      </div>
+      <p class="derived-note">Fast image-space motion diagnostic computed in the browser from the live Camera A/B previews. It uses texture-gated sparse block matching with a forward/backward consistency check. This is not 3D scene flow, VIO, or metric motion.</p>
+      <div class="stereo-grid">
+        <figure><figcaption>Camera A motion vectors</figcaption><canvas id="flow-a" width="640" height="400"></canvas></figure>
+        <figure><figcaption>Camera B motion vectors</figcaption><canvas id="flow-b" width="640" height="400"></canvas></figure>
+      </div>
+      <section class="derived-metrics">
+        <article><span>A reliable vectors</span><strong id="flow-a-tracks">—</strong></article>
+        <article><span>A mean / p95 motion</span><strong id="flow-a-motion">—</strong></article>
+        <article><span>B reliable vectors</span><strong id="flow-b-tracks">—</strong></article>
+        <article><span>B mean / p95 motion</span><strong id="flow-b-motion">—</strong></article>
+        <article><span>Sample interval</span><strong id="flow-interval">—</strong></article>
+        <article><span>Processing</span><strong id="flow-processing">—</strong></article>
+      </section>
+      <div class="button-row"><button id="flow-toggle">Pause optical flow</button></div>
     </section>
 
     <section id="depth-panel" class="derived-panel hidden">
